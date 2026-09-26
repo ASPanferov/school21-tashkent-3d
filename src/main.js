@@ -2,7 +2,6 @@
 // Сцена, свет, камеры, разрезы по этажам, прогулка, выбор и редактирование зон.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
@@ -18,6 +17,7 @@ import { buildSite } from './build/site.js';
 import { P, sx, sy, sz } from './lib/geom.js';
 import { renderPlan } from './ui/plan.js';
 import { renderSite } from './ui/sitemap.js';
+import { createWalk } from './lib/walk.js';
 
 const $ = (id) => document.getElementById(id);
 const isTouch = matchMedia('(pointer: coarse)').matches;
@@ -199,6 +199,7 @@ function buildInteriors() {
   for (const g of Object.values(world.interior.levels)) scene.add(g);
   // инстансы мебели: помечаем, чтобы прятать в дальнем виде снаружи
   for (const g of Object.values(world.interior.levels)) g.traverse((o) => { if (o.isInstancedMesh) o.userData.detail = true; });
+  walk?.invalidate();   // коллизии прогулки пересоберутся (сразу, если она идёт, иначе при старте)
 }
 
 // Цветные метки достоверности по фасадам (режим «Достоверность»)
@@ -363,11 +364,18 @@ const PRESETS = [
 ];
 
 let tween = null;
+let walkBack = 'front';        // ракурс, к которому вернёмся после прогулки
 function fitCamera(id, instant = false) {
   const p = PRESETS.find((x) => x.id === id);
   if (!p) return;
+  if (p.walk) {
+    if (!state.walk && state.preset && state.preset !== 'walk') walkBack = state.preset;
+    state.preset = id;
+    tween = null;
+    walk.start();
+    return;
+  }
   state.preset = id;
-  if (p.walk) { startWalk(); return; }
   stopWalk();
   applyCut(p.cut);
   const to = { pos: P(...p.pos), tgt: P(...p.tgt) };
@@ -377,94 +385,36 @@ function fitCamera(id, instant = false) {
   renderPresets();
 }
 
-// ── Прогулка от первого лица ────────────────────────────────────────────────
-const plc = new PointerLockControls(camera, renderer.domElement);
-const keys = new Set();
-let walkLevel = 'L1';
-const eyeZ = () => B.LEVELS.find((l) => l.id === walkLevel).z + (walkLevel === 'L3' ? 0 : 0) + 1.62;
-let joy = null;
-function startWalk() {
-  state.walk = true;
-  applyCut(null);
-  walkLevel = 'L1';
-  camera.position.copy(P(50.5, -3.2, eyeZ()));
-  camera.lookAt(P(50.5, 10, eyeZ()));
-  controls.enabled = false;
-  showHint(isTouch ? 'Левый круг — идти, свайп справа — смотреть. Этаж — в рейке слева.' : 'Кликните по сцене. WASD — идти, мышь — смотреть, Q/E — этаж, Esc — выход.');
-  if (isTouch) makeJoystick();
-  renderPresets();
-  updateDetailVisibility();
-}
-function stopWalk() {
-  if (!state.walk) return;
-  state.walk = false;
-  plc.unlock();
-  controls.enabled = true;
-  // точка вращения — перед камерой
-  const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
-  controls.target.copy(camera.position.clone().add(dir.multiplyScalar(6)));
-  hideHint();
-  joy?.remove(); joy = null;
-}
-renderer.domElement.addEventListener('click', () => { if (state.walk && !isTouch && !plc.isLocked) plc.lock(); });
-addEventListener('keydown', (e) => {
-  if (e.target.closest?.('input,textarea,select')) return;
-  keys.add(e.code);
-  if (state.walk && (e.code === 'KeyQ' || e.code === 'KeyE')) {
-    const order = ['L1', 'M', 'L2', 'L3'];
-    const i = order.indexOf(walkLevel);
-    walkLevel = order[Math.max(0, Math.min(order.length - 1, i + (e.code === 'KeyE' ? 1 : -1)))];
-    renderRail();
-  }
-  if (e.code === 'Escape' && state.walk && !plc.isLocked) fitCamera('front');
+// ── Прогулка от первого лица (физика, управление и HUD — src/lib/walk.js) ────
+const walk = createWalk({
+  scene, camera, renderer, world, isTouch,
+  getZones: () => ZONES,
+  hooks: {
+    onStart() {
+      state.walk = true;
+      tween = null;
+      controls.enabled = false;
+      select(null);
+      applyCut(null);                       // всё здание, потолки на месте
+      renderPresets();
+      updateDetailVisibility();
+    },
+    onStop() {
+      state.walk = false;
+      controls.enabled = true;
+      // точка вращения — перед камерой
+      const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+      controls.target.copy(camera.position).add(dir.multiplyScalar(6));
+      fitFov(); camera.updateProjectionMatrix();
+      applyCut(state.cut);                  // вернуть видимость этажей
+      renderPresets();
+    },
+    exit: () => fitCamera(walkBack || 'front'),
+    setPixelRatio(pr) { renderer.setPixelRatio(pr); composer.setPixelRatio(pr); onResize(); },
+  },
 });
-addEventListener('keyup', (e) => keys.delete(e.code));
-const joyVec = new THREE.Vector2();
-let lookDrag = null;
-function makeJoystick() {
-  joy = document.createElement('div');
-  joy.className = 'joy';
-  joy.innerHTML = '<i></i>';
-  $('app').appendChild(joy);
-  const knob = joy.querySelector('i');
-  const move = (e) => {
-    const r = joy.getBoundingClientRect();
-    const t = e.touches ? e.touches[0] : e;
-    const dx = (t.clientX - (r.left + r.width / 2)) / (r.width / 2), dy = (t.clientY - (r.top + r.height / 2)) / (r.height / 2);
-    const l = Math.min(1, Math.hypot(dx, dy)), a = Math.atan2(dy, dx);
-    joyVec.set(Math.cos(a) * l, Math.sin(a) * l);
-    knob.style.transform = `translate(${joyVec.x * 36}px, ${joyVec.y * 36}px)`;
-  };
-  joy.addEventListener('pointerdown', (e) => { joy.setPointerCapture(e.pointerId); move(e); });
-  joy.addEventListener('pointermove', (e) => { if (e.buttons || e.pointerType === 'touch') move(e); });
-  const end = () => { joyVec.set(0, 0); knob.style.transform = ''; };
-  joy.addEventListener('pointerup', end); joy.addEventListener('pointercancel', end);
-}
-renderer.domElement.addEventListener('pointerdown', (e) => { if (state.walk && isTouch) lookDrag = { x: e.clientX, y: e.clientY }; });
-renderer.domElement.addEventListener('pointermove', (e) => {
-  if (!state.walk || !isTouch || !lookDrag) return;
-  const dx = e.clientX - lookDrag.x, dy = e.clientY - lookDrag.y;
-  lookDrag = { x: e.clientX, y: e.clientY };
-  const eul = new THREE.Euler(0, 0, 0, 'YXZ').setFromQuaternion(camera.quaternion);
-  eul.y -= dx * 0.005; eul.x = Math.max(-1.4, Math.min(1.4, eul.x - dy * 0.005));
-  camera.quaternion.setFromEuler(eul);
-});
-addEventListener('pointerup', () => { lookDrag = null; });
-
-function walkStep(dt) {
-  const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
-  const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0));
-  const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 4.2 : 1.8) * dt;
-  const mv = new THREE.Vector3();
-  if (keys.has('KeyW') || keys.has('ArrowUp')) mv.add(fwd);
-  if (keys.has('KeyS') || keys.has('ArrowDown')) mv.sub(fwd);
-  if (keys.has('KeyD') || keys.has('ArrowRight')) mv.add(right);
-  if (keys.has('KeyA') || keys.has('ArrowLeft')) mv.sub(right);
-  if (joyVec.lengthSq() > 0.01) mv.add(fwd.clone().multiplyScalar(-joyVec.y)).add(right.clone().multiplyScalar(joyVec.x));
-  if (mv.lengthSq() > 0) camera.position.add(mv.normalize().multiplyScalar(speed));
-  const target = sy(eyeZ());
-  camera.position.y += (target - camera.position.y) * Math.min(1, dt * 4);
-}
+function stopWalk() { walk.stop(); }
+$('b-walk')?.addEventListener('click', () => { setView('3d'); fitCamera('walk'); });
 
 // ── Выбор зоны кликом ────────────────────────────────────────────────────────
 const ray = new THREE.Raycaster();
@@ -687,7 +637,7 @@ function renderRail() {
     { id: null, name: 'Всё здание', el: `+${fmt(B.PARAPET_Z)}` },
     ...[...B.LEVELS].reverse().map((l) => ({ id: l.id, name: l.name, el: `${l.z > 0 ? '+' : l.z < 0 ? '−' : '±'}${fmt(Math.abs(l.z))}`, half: l.partial })),
   ];
-  const active = state.view === 'plan' ? state.planLevel : state.walk ? walkLevel : state.cut;
+  const active = state.view === 'plan' ? state.planLevel : state.walk ? walk.level() : state.cut;
   rail.innerHTML = `<div class="cap">${state.view === 'plan' ? 'План этажа' : state.walk ? 'Этаж прогулки' : 'Разрез по этажу'}</div>` + items.map((it, i) => {
     if (state.view === 'plan' && it.id === null) return '';
     const isActive = it.id === active || (it.id === null && active == null);
@@ -696,10 +646,7 @@ function renderRail() {
   rail.querySelectorAll('button').forEach((b) => b.onclick = () => {
     const id = b.dataset.lv || null;
     if (state.view === 'plan') { state.planLevel = id; showPlan(); renderRail(); return; }
-    if (state.walk) {
-      if (!id || id === 'B1' || id === 'B2') return;
-      walkLevel = id; renderRail(); return;
-    }
+    if (state.walk) { if (id) walk.gotoLevel(id); return; }
     const p = PRESETS.find((x) => x.id === state.preset);
     if (id && (!p || !p.cut) && !p?.inside) {
       // показываем разрез сверху-сбоку
@@ -789,7 +736,7 @@ function frame() {
     controls.target.lerpVectors(tween.from.tgt, tween.to.tgt, k);
     if (tween.t >= 1) tween = null;
   }
-  if (state.walk) walkStep(dt); else controls.update();
+  if (state.walk) walk.update(dt); else controls.update();
   sky.position.copy(camera.position);
   if (performance.now() - lastDetailCheck > 300) { lastDetailCheck = performance.now(); updateDetailVisibility(); }
   // тень следует за камерой, когда она внутри/рядом
@@ -813,6 +760,7 @@ function onResize() {
   camera.aspect = w / h; fitFov(); camera.updateProjectionMatrix();
   renderer.setSize(w, h); composer.setSize(w, h); labelRenderer.setSize(w, h);
   gtao?.setSize(w, h);
+  walk.onResize();
 }
 addEventListener('resize', onResize);
 
@@ -824,4 +772,4 @@ build().then(() => requestAnimationFrame(frame)).catch((e) => {
 });
 
 // для отладки из консоли
-window.__s21 = { scene, camera, controls, state, world, applyCut, applyTime, fitCamera, renderer, mats };
+window.__s21 = { scene, camera, controls, state, world, applyCut, applyTime, fitCamera, renderer, mats, walk: walk.api };

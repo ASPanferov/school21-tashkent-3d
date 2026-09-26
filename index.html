@@ -181,8 +181,85 @@
   .modal textarea { width: 100%; box-sizing: border-box; min-height: 300px; font: 12px/1.4 "JetBrains Mono", monospace; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
   .modal a { color: var(--accent); }
   .hint { position: absolute; left: 50%; top: 76px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; font-size: 13px; z-index: 7; box-shadow: var(--shadow); white-space: nowrap; }
-  .joy { position: absolute; bottom: 90px; left: 24px; width: 120px; height: 120px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.6); background: rgba(10,20,20,0.25); z-index: 8; touch-action: none; }
-  .joy i { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(255,255,255,0.75); }
+
+  /* Кнопка «Прогулка» в шапке */
+  .walkbtn { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
+  .walkbtn svg { width: 16px; height: 16px; fill: currentColor; flex: none; }
+  .walkbtn:hover { filter: brightness(1.07); }
+
+  /* ── Прогулка от первого лица: HUD поверх сцены (тёмное стекло в обеих темах) ── */
+  :root { --hud-bg: rgba(10, 18, 20, 0.62); --hud-bg-strong: rgba(10, 18, 20, 0.84); --hud-line: rgba(255, 255, 255, 0.16); --hud-ink: #eef4f2; --hud-muted: rgba(238, 244, 242, 0.7); --hud-accent: #37d3b6; --hud-accent-ink: #062320; }
+  body.walking .top, body.walking .rail, body.walking .bottom, body.walking .inspector, body.walking .hint, body.walking .sheet { display: none !important; }
+  .walk { position: absolute; inset: 0; z-index: 9; pointer-events: none; color: var(--hud-ink); font: 500 13px/1.3 "Onest", system-ui, sans-serif; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .walk button, .walk canvas { pointer-events: auto; }
+  .w-touch { position: absolute; inset: 0; touch-action: none; }
+  .walk.touch .w-touch { pointer-events: auto; }
+  .w-cross { position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: rgba(255, 255, 255, 0.95); box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.45); }
+  .w-cross::after { content: ""; position: absolute; inset: -7px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.45); }
+  .w-tl { position: absolute; top: 12px; left: calc(14px + env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; max-width: calc(100% - 250px); }
+  .w-row { display: flex; gap: 8px; align-items: stretch; max-width: 100%; }
+  .w-btn { border: 1px solid var(--hud-line); background: var(--hud-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: var(--hud-ink); border-radius: 10px; padding: 8px 12px; font: 600 13px "Onest", sans-serif; cursor: pointer; touch-action: manipulation; }
+  .w-btn:hover { background: var(--hud-bg-strong); }
+  .w-btn[aria-pressed="true"] { background: var(--hud-accent); color: var(--hud-accent-ink); border-color: var(--hud-accent); }
+  .w-exit { display: inline-flex; gap: 7px; align-items: center; }
+  .w-info { background: var(--hud-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--hud-line); border-radius: 10px; padding: 6px 12px; display: grid; min-width: 0; }
+  .w-info b { font: 700 14px/1.25 "Unbounded", "Onest", sans-serif; letter-spacing: 0.01em; white-space: nowrap; }
+  .w-info #w-zone { color: var(--hud-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .w-coords { font-size: 11px; color: var(--hud-muted); opacity: 0.85; white-space: nowrap; }
+  .w-floors { display: flex; gap: 3px; background: var(--hud-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--hud-line); border-radius: 10px; padding: 3px; }
+  .w-floors button { min-width: 36px; height: 32px; border: 0; border-radius: 7px; background: transparent; color: var(--hud-ink); font: 600 13px "JetBrains Mono", monospace; cursor: pointer; touch-action: manipulation; padding: 0 6px; }
+  .w-floors button:hover { background: rgba(255, 255, 255, 0.1); }
+  .w-floors button[aria-pressed="true"] { background: var(--hud-accent); color: var(--hud-accent-ink); }
+  .w-badge { background: rgba(242, 174, 69, 0.95); color: #2a1800; border-radius: 8px; padding: 4px 9px; font-weight: 600; font-size: 12px; }
+  .w-map { position: absolute; top: 12px; right: calc(14px + env(safe-area-inset-right, 0px)); width: 196px; height: 196px; border-radius: 12px; background: var(--hud-bg-strong); border: 1px solid var(--hud-line); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); cursor: crosshair; touch-action: manipulation; }
+  .walk.bigmap .w-map { width: min(64vmin, 520px); height: min(64vmin, 520px); }
+  .walk.locked .w-map { cursor: default; }
+  .w-msg { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); background: var(--hud-bg-strong); border: 1px solid var(--hud-line); border-radius: 10px; padding: 8px 14px; font-weight: 600; white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; }
+  .w-keys { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); background: var(--hud-bg); border: 1px solid var(--hud-line); border-radius: 10px; padding: 7px 12px 7px 6px; color: var(--hud-muted); white-space: nowrap; transition: opacity 0.8s; max-width: calc(100% - 32px); overflow: hidden; }
+  .w-keys.gone { opacity: 0; }
+  .walk kbd { font: 600 11px "JetBrains Mono", monospace; color: var(--hud-ink); border: 1px solid var(--hud-line); background: rgba(255, 255, 255, 0.06); border-radius: 5px; padding: 1px 5px; margin: 0 3px 0 8px; }
+  .w-joy { position: absolute; left: calc(26px + env(safe-area-inset-left, 0px)); bottom: 28px; width: 124px; height: 124px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.55); background: rgba(10, 18, 20, 0.28); display: none; }
+  .w-joy i { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; background: rgba(255, 255, 255, 0.82); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
+  .w-joy.on { bottom: auto; background: rgba(10, 18, 20, 0.4); }
+  .w-acts { position: absolute; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: 26px; display: none; grid-template-columns: auto auto; grid-template-areas: "fly ." "run jump"; gap: 10px; align-items: end; justify-items: center; }
+  .w-acts .w-btn { min-width: 64px; min-height: 46px; border-radius: 14px; padding: 8px 10px; }
+  .w-acts #w-flybtn { grid-area: fly; }
+  .w-acts #w-run { grid-area: run; }
+  .w-acts .big { grid-area: jump; min-width: 84px; min-height: 84px; border-radius: 50%; font-size: 14px; }
+  .walk.touch .w-joy { display: block; }
+  .walk.touch .w-acts { display: grid; }
+  .walk.touch .w-keys, .walk.touch .w-coords { display: none; }
+  .w-overlay { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; padding: 16px; background: rgba(6, 12, 13, 0.5); pointer-events: auto; }
+  .w-card { width: min(540px, 100%); max-height: calc(100% - 8px); overflow: auto; box-sizing: border-box; background: var(--panel-solid); color: var(--text); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 20px 22px; -webkit-user-select: text; user-select: text; }
+  .w-card h2 { margin: 0 0 6px; font: 700 20px/1.2 "Unbounded", "Onest", sans-serif; }
+  .w-card p { margin: 0 0 14px; color: var(--muted); }
+  .w-card kbd { font: 600 11px "JetBrains Mono", monospace; border: 1px solid var(--line); background: var(--bg); border-radius: 5px; padding: 1px 6px; margin: 0 1px; }
+  .w-help { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 7px; }
+  .w-help li { display: grid; grid-template-columns: 138px 1fr; gap: 12px; align-items: baseline; }
+  .w-help li > span:first-child { text-align: right; white-space: nowrap; }
+  .w-help .ic { font-size: 17px; text-align: center; color: var(--accent); }
+  .walk.touch .w-help.desk, .walk.desk .w-help.touch { display: none; }
+  .walk.touch .w-help li { grid-template-columns: 26px 1fr; }
+  .w-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .w-actions .btn { padding: 10px 16px; font-weight: 600; }
+  .w-actions .btn:disabled { opacity: 0.65; cursor: progress; }
+  @media (max-width: 760px), (max-height: 500px) {
+    .w-map { width: 124px; height: 124px; top: 10px; right: calc(10px + env(safe-area-inset-right, 0px)); }
+    .w-tl { top: 10px; left: calc(10px + env(safe-area-inset-left, 0px)); max-width: calc(100% - 152px); gap: 6px; }
+    .w-info { padding: 5px 9px; }
+    .w-info b { font-size: 12px; }
+    .w-info #w-zone { font-size: 12px; }
+    .w-exit .lbl { display: none; }
+    .w-floors { flex-wrap: wrap; }
+    .w-floors button { min-width: 32px; height: 30px; font-size: 12px; }
+    .w-card { padding: 16px; }
+    .w-card h2 { font-size: 17px; }
+  }
+  @media (max-height: 500px) {
+    .w-joy { bottom: 14px; width: 108px; height: 108px; }
+    .w-acts { bottom: 14px; grid-template-areas: "fly run jump"; grid-template-columns: auto auto auto; }
+    .w-acts .big { min-width: 70px; min-height: 70px; }
+  }
 
   @media (max-width: 760px) {
     .brand p { display: none; }
@@ -213,7 +290,8 @@
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+    "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js"
   }
 }
 </script>
@@ -244,6 +322,7 @@
       <button id="t-eve" aria-pressed="false">Вечер</button>
       <button id="t-night" aria-pressed="false">Ночь</button>
     </div>
+    <button class="iconbtn walkbtn" id="b-walk" title="Прогулка от первого лица"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="9" cy="2.6" r="1.6"/><path d="M8.2 5.2 5.6 6.6 4.6 9.2M8.2 5.2l-.9 4.4 2.6 2.2.8 3.2M7.3 9.6 6 12.4l-2.4 2.4M8.2 5.2l1.9 2.5 2.6.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Прогулка</button>
     <button class="iconbtn" id="b-conf" aria-pressed="false"><span class="full">Достоверность</span><span class="short">Точность</span></button>
     <button class="iconbtn" id="b-edit" aria-pressed="false">Редактор</button>
     <button class="iconbtn" id="b-about" aria-label="О модели"><span class="full">О модели</span><span class="short">?</span></button>
@@ -263,6 +342,59 @@
   <aside class="inspector" id="inspector" hidden></aside>
   <section class="sheet" id="sheet" hidden></section>
   <div class="hint" id="hint" hidden></div>
+
+  <!-- Прогулка от первого лица: HUD, сенсорное управление, старт/пауза (логика — src/lib/walk.js) -->
+  <div class="walk" id="walk" hidden>
+    <div class="w-touch" id="w-touch"></div>
+    <div class="w-cross" aria-hidden="true"></div>
+    <div class="w-tl">
+      <div class="w-row">
+        <button class="w-btn w-exit" id="w-exit" type="button" aria-label="Выйти из прогулки"><span aria-hidden="true">✕</span><span class="lbl">Выход</span></button>
+        <div class="w-info" id="w-info" aria-live="polite">
+          <b id="w-level">1 этаж</b><span id="w-zone">—</span>
+          <span class="w-coords mono" id="w-coords"></span>
+        </div>
+      </div>
+      <div class="w-floors" id="w-floors" role="group" aria-label="Этажи"></div>
+      <div class="w-badge" id="w-fly" hidden>Полёт сквозь стены · F</div>
+    </div>
+    <canvas class="w-map" id="w-map" aria-label="Мини-карта этажа: нажмите, чтобы перенестись"></canvas>
+    <div class="w-msg" id="w-msg" hidden></div>
+    <div class="w-keys" id="w-keys"><kbd>W A S D</kbd> идти <kbd>Shift</kbd> бег <kbd>Пробел</kbd> прыжок <kbd>F</kbd> полёт <kbd>1–4</kbd> этажи <kbd>M</kbd> карта <kbd>Esc</kbd> пауза</div>
+    <div class="w-joy" id="w-joy" aria-hidden="true"><i></i></div>
+    <div class="w-acts">
+      <button class="w-btn" id="w-flybtn" type="button" aria-pressed="false">Полёт</button>
+      <button class="w-btn" id="w-run" type="button" aria-pressed="false">Бег</button>
+      <button class="w-btn big" id="w-jump" type="button">Прыжок</button>
+    </div>
+    <div class="w-overlay" id="w-overlay" hidden>
+      <div class="w-card" role="dialog" aria-modal="true" aria-labelledby="w-ov-title">
+        <h2 id="w-ov-title">Прогулка по кампусу</h2>
+        <p id="w-ov-lead"></p>
+        <ul class="w-help desk">
+          <li><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>идти (или стрелки)</span></li>
+          <li><span><kbd>Мышь</kbd></span><span>смотреть по сторонам</span></li>
+          <li><span><kbd>Shift</kbd></span><span>бежать</span></li>
+          <li><span><kbd>Пробел</kbd></span><span>прыжок</span></li>
+          <li><span><kbd>F</kbd></span><span>полёт сквозь стены: <kbd>Пробел</kbd> вверх, <kbd>C</kbd> вниз</span></li>
+          <li><span><kbd>1</kbd>–<kbd>4</kbd> <kbd>B</kbd></span><span>на этаж, в подвал</span></li>
+          <li><span><kbd>M</kbd></span><span>большая карта (в паузе по ней можно кликнуть)</span></li>
+          <li><span><kbd>Esc</kbd></span><span>пауза, ещё раз — выход</span></li>
+        </ul>
+        <ul class="w-help touch">
+          <li><span class="ic">◎</span><span>левый джойстик — идти</span></li>
+          <li><span class="ic">↔</span><span>ведите пальцем справа — смотреть</span></li>
+          <li><span class="ic">⇧</span><span>«Бег», «Прыжок», «Полёт» — кнопки справа внизу</span></li>
+          <li><span class="ic">▦</span><span>этажи — кнопки вверху, карта — нажмите, чтобы перенестись</span></li>
+        </ul>
+        <div class="w-actions">
+          <button class="btn primary" id="w-go" type="button">Начать</button>
+          <button class="btn" id="w-spawn" type="button" hidden>К главному входу</button>
+          <button class="btn" id="w-back" type="button">Назад к модели</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="loader" id="loader"><div class="box"><div class="n">21</div><p id="loadmsg">Собираю здание…</p></div></div>
 </div>
