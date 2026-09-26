@@ -261,6 +261,11 @@
     .w-acts .big { min-width: 70px; min-height: 70px; }
   }
 
+  /* средняя ширина: кнопкам шапки не хватает места — остаётся только знак «21» */
+  @media (min-width: 761px) and (max-width: 1240px) {
+    .brand > div:last-child { display: none; }
+    .brand { padding: 10px; }
+  }
   @media (max-width: 760px) {
     .brand p { display: none; }
     .brand h1 { font-size: 13px; }
