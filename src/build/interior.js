@@ -834,6 +834,14 @@ function lobby(ctx, zn) {
 }
 function corridor(ctx, zn) {
   const { I, z, R } = ctx;
+  if (zn.id === 'l1-foyer-s') {
+    // у окон главного фасада: серые скамьи и растения, как в белом фойе
+    for (const u of [33.0, 35.7]) I('lbench', () => F.benchGeo(2.2, 0.6), 'fabric').push(mtx(u, 1.6, z), '#9a9ea3');
+    for (const u of [31.4, 36.6]) {
+      I('pot', F.potGeo, 'plastic').push(mtx(u, 5.9, z));
+      I('plant', () => F.plantGeo(1.4), 'leaf').push(mtx(u, 5.9, z + 0.45, R() * 6));
+    }
+  }
   if (zn.id === 'l1-conf-corr') easelRow(ctx, [15.5, 18.5, 21.5, 24.5, 27.5].map((u) => [u, 18.0, Math.PI]));
   if (zn.type === 'gallery' && zn.level === 'L2') {
     // фиолетовые банкетки и пуфы вдоль сиреневого парапета
