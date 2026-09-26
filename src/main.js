@@ -7,10 +7,13 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import * as B from './data/building.js';
 import { Materials } from './lib/materials.js';
-import { setMaxAniso } from './lib/textures.js';
+import { setMaxAniso, setTextureDetail } from './lib/textures.js';
+import { setFurnitureDetail } from './build/furniture.js';
 import { buildShell, BANDS } from './build/shell.js';
 import { buildInterior } from './build/interior.js';
 import { buildSite } from './build/site.js';
@@ -36,17 +39,26 @@ const saveZones = () => { try { localStorage.setItem(STORE, JSON.stringify(ZONES
 const state = { view: '3d', cut: null, time: 'day', conf: false, edit: false, walk: false, selected: null, preset: 'front' };
 
 // ── Рендерер и сцена ────────────────────────────────────────────────────────
+// Уровень качества: high — десктоп (MSAA ×4, GTAO, тени 4096 мягкие, полная детализация),
+// low — телефоны/планшеты (FXAA, тени 2048, упрощённая мебель, текстуры вдвое меньше).
+// Принудительно: ?q=low | ?q=high
+const qParam = new URLSearchParams(location.search).get('q');
+const QUALITY = qParam === 'low' || qParam === 'high' ? qParam : (isTouch || small ? 'low' : 'high');
+const HQ = QUALITY === 'high';
+setFurnitureDetail(HQ ? 'high' : 'low');
+setTextureDetail(HQ ? 1 : 0.5);
 const stage = $('stage');
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, small ? 1.6 : 2));
+// сглаживание делает постобработка (MSAA в буфере композитора или FXAA), холсту оно не нужно
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, HQ ? 2 : 1.5));
 renderer.setSize(stage.clientWidth, stage.clientHeight);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMapping = THREE.NeutralToneMapping;
 renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = HQ ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
 renderer.shadowMap.autoUpdate = false;
 stage.appendChild(renderer.domElement);
-setMaxAniso(Math.min(8, renderer.capabilities.getMaxAnisotropy()));
+setMaxAniso(Math.min(HQ ? 8 : 4, renderer.capabilities.getMaxAnisotropy()));
 
 const labelRenderer = new CSS2DRenderer();
 labelRenderer.setSize(stage.clientWidth, stage.clientHeight);
@@ -67,24 +79,54 @@ controls.screenSpacePanning = true;
 fitFov(); camera.updateProjectionMatrix();
 
 // ── Небо, солнце, окружение ──────────────────────────────────────────────────
-// Градиентное небо: синий зенит → светлый горизонт + ореол солнца.
-// Им же освещается сцена через PMREM — стекло отражает именно это небо (как на фото).
-function makeSkyMaterial() {
+// Градиентное небо: синий зенит → светлый горизонт + ореол солнца + процедурные облака
+// (ночью — звёзды). Им же через PMREM освещается экстерьер: стекло отражает это небо
+// с облаками и тёмную полосу деревьев/застройки у горизонта (как на фото).
+// Интерьер освещается отдельной картой окружения — «комнатой» с белыми стенами и линейными
+// светильниками на чёрном потолке: внутри светло и ровно днём и ночью (кампус работает 24/7).
+function makeSkyMaterial(shared = null) {
+  const uniforms = shared ? { ...shared, treeBand: { value: 1 } } : {
+    top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, bottom: { value: new THREE.Color() },
+    sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunColor: { value: new THREE.Color() }, sunGlow: { value: 1 },
+    cloudCover: { value: 0.3 }, cloudLit: { value: new THREE.Color(1, 1, 1) }, cloudShade: { value: new THREE.Color(0.7, 0.74, 0.8) },
+    stars: { value: 0 }, treeBand: { value: 0 }, treeColor: { value: new THREE.Color(0.08, 0.1, 0.07) },
+  };
   return new THREE.ShaderMaterial({
-    uniforms: {
-      top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, bottom: { value: new THREE.Color() },
-      sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunColor: { value: new THREE.Color() }, sunGlow: { value: 1 },
-    },
+    uniforms,
     vertexShader: `varying vec3 vDir;
       void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: `uniform vec3 top; uniform vec3 horizon; uniform vec3 bottom; uniform vec3 sunDir; uniform vec3 sunColor; uniform float sunGlow;
+      uniform float cloudCover; uniform vec3 cloudLit; uniform vec3 cloudShade; uniform float stars; uniform float treeBand; uniform vec3 treeColor;
       varying vec3 vDir;
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y); }
+      float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * vnoise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return s; }
       void main() {
         vec3 d = normalize(vDir);
         float h = d.y;
         vec3 col = h > 0.0 ? mix(horizon, top, pow(h, 0.5)) : mix(horizon, bottom, pow(min(1.0, -h * 3.0), 0.6));
         float s = max(dot(d, normalize(sunDir)), 0.0);
+        if (h > 0.0 && cloudCover > 0.0) {
+          vec2 uv = d.xz / (h + 0.1) * 1.4;
+          float n = fbm(uv + vec2(3.1, 7.7));
+          float lo = 0.7 - cloudCover * 0.4;
+          float c = smoothstep(lo, lo + 0.2, n) * smoothstep(0.0, 0.14, h);
+          float edge = 1.0 - smoothstep(lo + 0.05, lo + 0.3, n);
+          vec3 cc = mix(cloudLit, cloudShade, edge * 0.7) * (0.85 + 0.35 * pow(s, 6.0));
+          col = mix(col, cc, c * 0.9);
+        }
         col += sunColor * (pow(s, 1400.0) * 30.0 + pow(s, 14.0) * 0.45 * sunGlow + pow(s, 3.0) * 0.12 * sunGlow);
+        if (stars > 0.0 && h > 0.05) {
+          vec2 g = floor(d.xz / (h + 0.3) * 260.0);
+          float st = step(0.9975, hash(g)) * (0.4 + 0.6 * hash(g + 3.7));
+          col += vec3(st) * stars * smoothstep(0.05, 0.35, h);
+        }
+        if (treeBand > 0.0) {
+          float az = atan(d.z, d.x);
+          float lim = 0.02 + 0.06 * fbm(vec2(az * 5.0, 0.5)) + 0.025 * vnoise(vec2(az * 60.0, 1.5));
+          if (h > -0.05 && h < lim) col = mix(col, treeColor, treeBand);
+        }
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -100,23 +142,55 @@ const skyU = sky.material.uniforms;
 
 const sun = new THREE.DirectionalLight(0xfff3df, 3.2);
 sun.castShadow = true;
-const sm = small ? 2048 : 4096;
+const sm = HQ ? 4096 : 2048;
 sun.shadow.mapSize.set(sm, sm);
 Object.assign(sun.shadow.camera, { left: -80, right: 80, top: 80, bottom: -80, near: 5, far: 500 });
-sun.shadow.bias = -0.0003;
-sun.shadow.normalBias = 0.025;
+sun.shadow.bias = -0.00025;
+sun.shadow.normalBias = 0.022;
 scene.add(sun, sun.target);
-const hemi = new THREE.HemisphereLight(0xdfeeff, 0x8a7d63, 0.65);
+const hemi = new THREE.HemisphereLight(0xdfeeff, 0x8a7d63, 0.4);
 scene.add(hemi);
 
+// Тень: ортокамера солнца плотно охватывает здание, площадь и ближние деревья
+function fitShadow() {
+  const cam = sun.shadow.camera;
+  sun.updateMatrixWorld(); sun.target.updateMatrixWorld();
+  cam.position.setFromMatrixPosition(sun.matrixWorld);
+  cam.lookAt(new THREE.Vector3().setFromMatrixPosition(sun.target.matrixWorld));
+  cam.updateMatrixWorld();
+  const box = new THREE.Box3();
+  for (const u of [-12, 76]) for (const v of [-24, 64]) for (const z of [B.GRADE - 3, 22]) box.expandByPoint(P(u, v, z).applyMatrix4(cam.matrixWorldInverse));
+  Object.assign(cam, { left: box.min.x, right: box.max.x, bottom: box.min.y, top: box.max.y, near: Math.max(1, -box.max.z - 40), far: -box.min.z + 10 });
+  cam.updateProjectionMatrix();
+}
+
 const pmrem = new THREE.PMREMGenerator(renderer);
+// окружение экстерьера: небо с облаками + полоса деревьев у горизонта + земля
 const envScene = new THREE.Scene();
-const envSky = new THREE.Mesh(new THREE.SphereGeometry(50, 48, 24), sky.material);
+const envSky = new THREE.Mesh(new THREE.SphereGeometry(50, 48, 24), makeSkyMaterial(skyU));
 envScene.add(envSky);
-// «земля» в отражениях — тёплый серый, чтобы нижняя половина стекла не была синей
-const envGround = new THREE.Mesh(new THREE.CircleGeometry(49, 32).rotateX(-Math.PI / 2).translate(0, -2, 0), new THREE.MeshBasicMaterial({ color: 0x6f6a60 }));
+const envGround = new THREE.Mesh(new THREE.CircleGeometry(49, 32).rotateX(-Math.PI / 2).translate(0, -2.5, 0), new THREE.MeshBasicMaterial({ color: 0x5f5c55 }));
 envScene.add(envGround);
 let envRT = null;
+// окружение интерьера: комната 36×36×7 — чёрный потолок с рядами линейных светильников,
+// белые стены, светлый пол, по двум сторонам — окна (днём светлые, ночью тёмные)
+const intScene = new THREE.Scene();
+const intMats = {
+  wall: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.9, 0.9, 0.88), side: THREE.BackSide }),
+  floor: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.42, 0.4, 0.37) }),
+  ceil: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.02, 0.02, 0.022) }),
+  led: new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.97, 0.92).multiplyScalar(14) }),
+  win: new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.8, 2.0) }),
+};
+{
+  const room = new THREE.Mesh(new THREE.BoxGeometry(36, 7, 36), intMats.wall);
+  intScene.add(room);
+  intScene.add(new THREE.Mesh(new THREE.PlaneGeometry(35.9, 35.9).rotateX(-Math.PI / 2).translate(0, -3.45, 0), intMats.floor));
+  intScene.add(new THREE.Mesh(new THREE.PlaneGeometry(35.9, 35.9).rotateX(Math.PI / 2).translate(0, 3.45, 0), intMats.ceil));
+  for (let x = -15; x <= 15; x += 3.2) for (let z = -15; z <= 15; z += 4.6) intScene.add(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 3.0).translate(x, 3.1, z), intMats.led));
+  for (const [x, z, ry] of [[0, -17.95, 0], [17.95, 0, -Math.PI / 2]]) intScene.add(new THREE.Mesh(new THREE.PlaneGeometry(30, 3.2).translate(0, 0.2, 0).rotateY(ry).translate(x, 0, z), intMats.win));
+}
+let intRT = null;
 
 // Направления в сцене: север и восток (здание повёрнуто на 39.1°)
 const bu = THREE.MathUtils.degToRad(B.BEARING_U);
@@ -127,35 +201,52 @@ function sunDir(az, el) {
   return NORTH.clone().multiplyScalar(Math.cos(a)).add(EAST.clone().multiplyScalar(Math.sin(a))).multiplyScalar(Math.cos(e)).add(new THREE.Vector3(0, Math.sin(e), 0)).normalize();
 }
 
+// Время суток. env / envInt — сила отражений неба (экстерьер) и «комнаты» (интерьер),
+// glass — непрозрачность фасадного стекла (ночью ниже: видно освещённые этажи, как на фото).
 const TIMES = {
   // конец сентября, Ташкент: полдень ~47° над горизонтом
-  day: { az: 178, el: 47, sun: 3.2, sunColor: 0xfff0d8, hemi: 0.55, exp: 0.9, emissive: 0.35, bloom: 0, glassGlow: 0,
-    sky: { top: 0x2f6fc4, horizon: 0xc6dcef, bottom: 0x8d8a80, sun: 0xfff2d6, glow: 1.0 }, fog: 0xc9dbea, env: 1.0 },
-  eve: { az: 262, el: 6, sun: 2.4, sunColor: 0xffae6a, hemi: 0.4, exp: 0.95, emissive: 1.0, bloom: 0.35, glassGlow: 0.16,
-    sky: { top: 0x33497f, horizon: 0xf2b387, bottom: 0x5a4b45, sun: 0xffc07a, glow: 2.2 }, fog: 0xd9a47e, env: 0.75 },
-  night: { az: 210, el: -12, sun: 0.0, sunColor: 0x8fa8ff, hemi: 0.14, exp: 1.05, emissive: 1.6, bloom: 0.8, glassGlow: 0.32,
-    sky: { top: 0x040811, horizon: 0x16223a, bottom: 0x0a0c12, sun: 0x000000, glow: 0 }, fog: 0x0b1222, env: 0.18 },
+  day: { az: 178, el: 47, sun: 3.3, sunColor: 0xfff1dc, hemi: 0.42, exp: 1.0, emissive: 0.55, bloom: 0, glass: 0.9, env: 1.0, envInt: 0.85, win: 1,
+    sky: { top: 0x2d6cc0, horizon: 0xcfe1f1, bottom: 0x8d8a80, sun: 0xfff2d6, glow: 1.0, clouds: 0.34, lit: 0xffffff, shade: 0xb4bfcc, stars: 0 },
+    tree: 0x1d2a1c, ground: 0x5f5c55, fog: 0xcfdeec },
+  eve: { az: 262, el: 6, sun: 2.5, sunColor: 0xffae6a, hemi: 0.3, exp: 1.0, emissive: 1.0, bloom: 0.32, glass: 0.8, env: 0.8, envInt: 0.85, win: 0.45,
+    sky: { top: 0x33497f, horizon: 0xf2b387, bottom: 0x5a4b45, sun: 0xffc07a, glow: 2.2, clouds: 0.3, lit: 0xffc49a, shade: 0x7a6b86, stars: 0 },
+    tree: 0x241e1c, ground: 0x4a3f3a, fog: 0xd9a47e },
+  night: { az: 210, el: -12, sun: 0.0, sunColor: 0x8fa8ff, hemi: 0.1, exp: 1.05, emissive: 1.6, bloom: 0.75, glass: 0.5, env: 0.35, envInt: 0.8, win: 0.02,
+    sky: { top: 0x040811, horizon: 0x16223a, bottom: 0x0a0c12, sun: 0x000000, glow: 0, clouds: 0.18, lit: 0x1c2436, shade: 0x0e1320, stars: 0.9 },
+    tree: 0x05070a, ground: 0x0c0d10, fog: 0x0b1222 },
 };
 
 const mats = new Materials();
 
 // ── Постобработка ────────────────────────────────────────────────────────────
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(stage.clientWidth, stage.clientHeight, { samples: small ? 0 : 4, type: THREE.HalfFloatType }));
+// high: MSAA ×4 в буфере + GTAO; low: без MSAA, но с FXAA в конце. Bloom — вечером и ночью.
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(stage.clientWidth, stage.clientHeight, { samples: HQ ? 4 : 0, type: THREE.HalfFloatType }));
 composer.setPixelRatio(renderer.getPixelRatio());
 composer.setSize(stage.clientWidth, stage.clientHeight);
 composer.addPass(new RenderPass(scene, camera));
 let gtao = null;
-if (!small && !isTouch) {
+if (HQ) {
   gtao = new GTAOPass(scene, camera, stage.clientWidth, stage.clientHeight);
   gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.4, thickness: 1.0, scale: 1.0, samples: 12 });
   gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
-  gtao.blendIntensity = 0.85;
+  gtao.blendIntensity = 0.8;
   composer.addPass(gtao);
 }
-const bloom = new UnrealBloomPass(new THREE.Vector2(stage.clientWidth, stage.clientHeight), 0.6, 0.5, 0.82);
+const bloom = new UnrealBloomPass(new THREE.Vector2(stage.clientWidth, stage.clientHeight), 0.6, 0.45, 0.86);
 bloom.enabled = false;
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+let fxaa = null;
+if (!HQ) {
+  fxaa = new ShaderPass(FXAAShader);
+  composer.addPass(fxaa);
+}
+function updateFxaa() {
+  if (!fxaa) return;
+  const pr = renderer.getPixelRatio();
+  fxaa.material.uniforms.resolution.value.set(1 / (stage.clientWidth * pr), 1 / (stage.clientHeight * pr));
+}
+updateFxaa();
 
 // ── Сборка модели ────────────────────────────────────────────────────────────
 const world = { site: null, shell: null, interior: null, pick: [], overlay: null, labels: [] };
@@ -232,25 +323,46 @@ function applyTime(t) {
   sun.intensity = T.sun;
   sun.color.set(T.sunColor);
   sun.visible = T.sun > 0;
+  fitShadow();
   hemi.intensity = T.hemi;
-  skyU.top.value.set(T.sky.top); skyU.horizon.value.set(T.sky.horizon); skyU.bottom.value.set(T.sky.bottom);
-  skyU.sunColor.value.set(T.sky.sun); skyU.sunGlow.value = T.sky.glow; skyU.sunDir.value.copy(d);
+  const S = T.sky;
+  skyU.top.value.set(S.top); skyU.horizon.value.set(S.horizon); skyU.bottom.value.set(S.bottom);
+  skyU.sunColor.value.set(S.sun); skyU.sunGlow.value = S.glow; skyU.sunDir.value.copy(d);
+  skyU.cloudCover.value = HQ ? S.clouds : S.clouds * 0.9; skyU.cloudLit.value.set(S.lit); skyU.cloudShade.value.set(S.shade);
+  skyU.stars.value = S.stars; skyU.treeColor.value.set(T.tree);
+  envGround.material.color.set(T.ground);
   if (envRT) envRT.dispose();
-  envRT = pmrem.fromScene(envScene, 0.015);
+  envRT = pmrem.fromScene(envScene, 0.012);
+  // интерьер: окна «комнаты» днём светлые, ночью тёмные; светильники всегда горят
+  intMats.win.color.setRGB(1.6, 1.8, 2.0).multiplyScalar(T.win);
+  if (intRT) intRT.dispose();
+  intRT = pmrem.fromScene(intScene, 0.03);
   scene.environment = envRT.texture;
   scene.environmentIntensity = T.env;
   tuneEnv();
   renderer.toneMappingExposure = T.exp;
   scene.background = null;
   scene.fog = new THREE.Fog(T.fog, 280, 1400);
-  // светильники, логотипы, «светящиеся» окна
+  // светильники, логотипы, экраны, окна подвала, фонари; прозрачность фасадного стекла
   for (const m of mats.cache.values()) {
     if (m.userData.e0 === undefined) m.userData.e0 = m.emissiveIntensity ?? 0;
-    if (!('emissiveIntensity' in m)) continue;
     const base = m.userData.e0;
-    if (/^led/.test(m.name)) m.emissiveIntensity = base * (t === 'day' ? 0.55 : T.emissive);
-    else if (/^teal21/.test(m.name)) m.emissiveIntensity = t === 'day' ? 0.15 : t === 'eve' ? 0.9 : 1.8;
-    else if (/^glass(Blue|Green)/.test(m.name)) { m.emissive?.set(0xffd7a0); m.emissiveIntensity = T.glassGlow; }
+    const nm = m.name;
+    if (/^lightPool/.test(nm)) { m.opacity = t === 'day' ? 0 : t === 'eve' ? 0.45 : 0.85; m.visible = t !== 'day'; continue; }
+    if (/^glass(Blue|Green|Olive|Dark)/.test(nm) && m.transparent) {
+      const op = /^glassDark/.test(nm) ? Math.min(0.85, T.glass) : T.glass;
+      const cutTop = state.cut && m.userData.level && Math.abs(m.opacity - 0.3) < 1e-3;
+      m.userData.baseOpacity = op;
+      if (!cutTop) m.opacity = op;
+      if (m.emissive) m.emissiveIntensity = 0;
+      continue;
+    }
+    if (!('emissiveIntensity' in m)) continue;
+    if (/^led/.test(nm)) m.emissiveIntensity = base * (t === 'day' ? 0.55 : T.emissive);
+    else if (/^teal21/.test(nm)) m.emissiveIntensity = t === 'day' ? base : t === 'eve' ? 0.9 : 1.7;
+    else if (/^screen/.test(nm)) m.emissiveIntensity = t === 'day' ? 0.85 : t === 'eve' ? 1.0 : 1.15;
+    else if (/^glassB1Lit/.test(nm)) m.emissiveIntensity = t === 'day' ? 0 : t === 'eve' ? 0.8 : 1.5;
+    else if (/^poleLed/.test(nm)) m.emissiveIntensity = t === 'day' ? 0.3 : t === 'eve' ? 2.5 : 4.0;
   }
   bloom.enabled = T.bloom > 0;
   bloom.strength = T.bloom;
@@ -258,13 +370,19 @@ function applyTime(t) {
   document.querySelectorAll('#timeSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.id === { day: 't-day', eve: 't-eve', night: 't-night' }[t])));
 }
 
-// Отражения: стекло и металл — сильные, матовые поверхности — слабые (контраст как на фото)
+// Отражения и рассеянный свет окружения: наружным материалам — небо, интерьерным — «комната».
+// (В three r170 materials.envMapIntensity работает только при явно заданном material.envMap.)
 function tuneEnv() {
+  const T = TIMES[state.time];
   for (const m of mats.cache.values()) {
-    if (!('envMapIntensity' in m)) continue;
-    if (m.userData.env0 === undefined) m.userData.env0 = m.envMapIntensity;
-    const shiny = /^(glass|skyGlass|stainless|mullion|steel|car|water|partition|serverGlass)/.test(m.name) || (m.metalness ?? 0) > 0.5;
-    m.envMapIntensity = shiny ? m.userData.env0 : Math.min(m.userData.env0, 0.38);
+    if (!m.isMeshStandardMaterial) continue;
+    if (m.userData.env0 === undefined) m.userData.env0 = m.envMapIntensity ?? 1;
+    const intr = m.userData.env === 'int';
+    const tex = intr ? intRT?.texture : envRT?.texture;
+    if (!tex) continue;
+    if (!m.envMap) m.needsUpdate = true;
+    m.envMap = tex;
+    m.envMapIntensity = m.userData.env0 * (intr ? T.envInt : T.env);
   }
 }
 
@@ -760,6 +878,7 @@ function onResize() {
   camera.aspect = w / h; fitFov(); camera.updateProjectionMatrix();
   renderer.setSize(w, h); composer.setSize(w, h); labelRenderer.setSize(w, h);
   gtao?.setSize(w, h);
+  updateFxaa();
   walk.onResize();
 }
 addEventListener('resize', onResize);
@@ -772,4 +891,4 @@ build().then(() => requestAnimationFrame(frame)).catch((e) => {
 });
 
 // для отладки из консоли
-window.__s21 = { scene, camera, controls, state, world, applyCut, applyTime, fitCamera, renderer, mats, walk: walk.api };
+window.__s21 = { scene, camera, controls, state, world, applyCut, applyTime, fitCamera, renderer, mats, walk: walk.api, quality: QUALITY, composer };
