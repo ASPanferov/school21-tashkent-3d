@@ -462,7 +462,7 @@ function updateLabels() {
     if (z.type === 'cluster') { const s = document.createElement('b'); s.textContent = `${seatsOf(z.cluster, z.level)} мест`; el.appendChild(s); }
     const o = new CSS2DObject(el);
     const zl = B.LEVELS.find((l) => l.id === z.level).z;
-    const lz = z.type === 'amphitheater' ? B.AMPHI.walkZ : z.type === 'lounge3' ? zl + 0.45 : zl;
+    const lz = z.type === 'amphitheater' ? B.AMPHI.walkZ : z.type === 'lounge3' ? zl + B.LOUNGE3.podium : zl;
     const [lu, lv] = z.type === 'atrium' ? [28.2, 33.2] : z.type === 'amphitheater' ? [20.4, 27.2] : z.type === 'gallery' ? [u0 + 4.5, v0 + 3.0] : [(u0 + u1) / 2, (v0 + v1) / 2];
     o.position.copy(P(lu, lv, lz + 1.2));
     scene.add(o);

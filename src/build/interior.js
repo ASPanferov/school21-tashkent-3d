@@ -272,6 +272,11 @@ function columns(ctx) {
       b.add(`col:${cl.cluster}`, g);
       continue;
     }
+    // в конференц-зале колонны чёрные целиком (панорама RQJ)
+    if (ctx.zones.some((z) => z.type === 'conference' && inRect(u, v, z.rect, 0.05))) {
+      b.box('black', u - h, v - h, L.z, u + h, v + h, L.top);
+      continue;
+    }
     const porch = PORCH && L.id === 'L1' && inRect(u, v, PORCH, 0.4);
     b.box('columnWhite', u - h, v - h, L.z, u + h, v + h, L.top - (porch ? 0.07 : 0.7));
     if (!porch) cb.box('ceilingBlack', u - h - 0.01, v - h - 0.01, L.top - 0.7, u + h + 0.01, v + h + 0.01, L.top);
@@ -552,7 +557,12 @@ function amphitheater(ctx) {
   }
   // кольцевой проход −1.80: внутренняя полоса разрезана проходами, внешняя — сплошная
   const w0 = A.walk[0], wm = w0 + 0.5, w1 = A.walk[1];
-  for (const pc of pieces) prism(b, 'floorTile', clipAll(sector(C, w0, wm, A.walkAngles[0], A.walkAngles[1]), [...planes, ...pc]), A.floorZ, A.walkZ);
+  // внутренняя полоса: тёмный подступенок за последним рядом (как на панораме Jfv), сверху плитка
+  for (const pc of pieces) {
+    const poly = clipAll(sector(C, w0, wm, A.walkAngles[0], A.walkAngles[1]), [...planes, ...pc]);
+    prism(b, 'tier', poly, A.floorZ, A.walkZ - 0.02);
+    prism(b, 'floorTile', poly, A.walkZ - 0.02, A.walkZ);
+  }
   prism(b, 'floorTile', clipAll(sector(C, wm, w1, A.walkAngles[0], A.walkAngles[1]), planes), A.floorZ, A.walkZ);
   // ступени проходов: по две на ряд, ещё две — на кольцо
   const steps = [];
@@ -626,21 +636,26 @@ function atriumLounge(ctx) {
     const r = [Math.min(s.a[0], e[0]) - s.w / 2 - 0.6, Math.min(s.a[1], e[1]) - s.w / 2 - 0.6, Math.max(s.a[0], e[0]) + s.w / 2 + 0.6, Math.max(s.a[1], e[1]) + s.w / 2 + 0.6];
     return inRect(u, v, r);
   });
-  const cols = ['#8c8f93', '#b8573a', '#3c3f44', '#8c8f93', '#c9c6c0'];
+  // модульные диваны спинками к туфовым стенам, перед ними круглые белые столики и пуфы;
+  // середина полумесяца — свободный проход от сцены вокруг лектория (панорама 0fA)
+  const cols = ['#8c8f93', '#b8573a', '#3c3f44', '#8c8f93', '#b8573a', '#c9c6c0'];
   let k = 0;
-  for (let u = ATR[0] + 2.2; u < ATR[2] - 1.5; u += 3.4) for (let v = ATR[1] + 2.0; v < ATR[3] - 1.4; v += 3.2) {
-    if (!far(u, v) || underFlight(u, v) || v < 24.5 || (u > 26.8 && u < 28.6)) continue;
-    const rot = Math.atan2(C[1] - v, C[0] - u) + Math.PI / 2 + (R() - 0.5) * 0.4;
-    I('sofaB', () => F.sofaGeo(1.9), 'fabric').push(mtx(u, v, z, rot), cols[k++ % cols.length]);
-    I('pouf1', F.poufGeo, 'fabric').push(mtx(u + 1.1, v + 0.4, z, R()), cols[(k + 1) % cols.length]);
-    I('rtable', () => new THREE.CylinderGeometry(0.4, 0.4, 0.04, 24).translate(0, 0.45, 0), 'tableWhite').push(mtx(u + 0.2, v - 1.0, z));
-    I('rtableLeg', () => new THREE.CylinderGeometry(0.03, 0.03, 0.45, 8).translate(0, 0.225, 0), 'deskLeg').push(mtx(u + 0.2, v - 1.0, z));
+  const groups = [
+    ...[25.6, 29.0, 32.4].map((v) => ({ u: ATR[2] - 0.65, v, rot: Math.PI / 2, tu: ATR[2] - 1.85, tv: v })),
+    ...[22.8, 26.0].map((u) => ({ u, v: ATR[3] - 0.65, rot: Math.PI, tu: u, tv: ATR[3] - 1.85 })),
+  ];
+  for (const g of groups) {
+    if (!far(g.u, g.v) || underFlight(g.u, g.v)) continue;
+    const along = g.rot === Math.PI ? [1, 0] : [0, 1];
+    for (const s of [-0.55, 0.55]) I('sofaB', () => F.sofaGeo(1.1), 'fabric').push(mtx(g.u + along[0] * s, g.v + along[1] * s, z, g.rot), cols[k++ % cols.length]);
+    I('rtable', () => new THREE.CylinderGeometry(0.4, 0.4, 0.04, 24).translate(0, 0.45, 0), 'tableWhite').push(mtx(g.tu, g.tv, z));
+    I('rtableLeg', () => new THREE.CylinderGeometry(0.03, 0.03, 0.45, 8).translate(0, 0.225, 0), 'deskLeg').push(mtx(g.tu, g.tv, z));
+    I('pouf1', F.poufGeo, 'fabric').push(mtx(g.tu + along[0] * 0.95, g.tv + along[1] * 0.95, z, R()), cols[(k + 2) % cols.length]);
   }
-  // фикусы у стен
-  for (const [u, v] of [[29.6, 35.6], [29.6, 30.0], [22.0, 35.8], [29.8, 21.0], [26.0, 35.8]]) {
-    if (underFlight(u, v)) continue;
-    I('potB', F.potGeo, 'plastic').push(mtx(u, v, z));
-    I('plantB', () => F.plantGeo(1.9), 'leaf').push(mtx(u, v, z + 0.45, R() * 6));
+  // высокие фикусы в графитовых кадках между группами
+  for (const [u, v] of [[29.9, 27.3], [29.9, 30.7], [29.9, 35.9], [24.4, 35.95], [21.4, 35.95], [29.8, 21.0]]) {
+    I('potB', F.potGeo, 'plastic').push(mtx(u, v, z, 0, [1.3, 1.1, 1.3]), '#45484d');
+    I('plantB', () => F.plantGeo(1.9), 'leaf').push(mtx(u, v, z + 0.5, R() * 6, [0.9, 1.45, 0.9]));
   }
   // линейные светильники на стенах из туфа
   for (const [u0, v0, u1, v1] of [[30.4, 22, 30.4, 35], [14, 36.4, 29, 36.4]]) {
@@ -865,7 +880,9 @@ function lounge(ctx, zn) {
 function lounge3(ctx, zn) {
   const { b, I, R, z } = ctx;
   const P = LOUNGE3, [u0, v0, u1, v1] = P.rect, top = z + P.podium;
-  b.add('floorWood', slabGeo(rectPts(u0, v0, u1, v1), P.wells.map((w) => rectPts(...w)), z + 0.008, P.podium - 0.008));
+  // тело подиума — белые панели (панорама puH), сверху паркет
+  b.add('tableWhite', slabGeo(rectPts(u0, v0, u1, v1), P.wells.map((w) => rectPts(...w)), z + 0.008, P.podium - 0.04));
+  b.add('floorWood', slabGeo(rectPts(u0, v0, u1, v1), P.wells.map((w) => rectPts(...w)), z + P.podium - 0.032, 0.032));
   // кашпо по периметру подиума (кроме ступеней) и вокруг колодцев
   const gapsOf = (side) => P.steps.filter((s) => s.side === side).map((s) => [s.from, s.to]);
   const edge = (side, a0, a1, fixed) => {
@@ -885,14 +902,15 @@ function lounge3(ctx, zn) {
     planter(ctx, a - 0.55, c - 0.55, e + 0.55, c, top); planter(ctx, a - 0.55, f, e + 0.55, f + 0.55, top);
     planter(ctx, a - 0.55, c, a, f, top); planter(ctx, e, c, e + 0.55, f, top);
   }
-  // ступени с кольца на подиум
+  // ступени с кольца на подиум (серый камень, как на панораме 63w)
+  const n = P.stepCount ?? 3;
   for (const s of P.steps) {
-    for (let i = 0; i < 3; i++) {
-      const h = z + (P.podium * (i + 1)) / 3, d = 0.3 * (3 - i);
-      if (s.side === 'v1') b.box('floorWood', s.from, v1, z, s.to, v1 + d, h);
-      if (s.side === 'v0') b.box('floorWood', s.from, v0 - d, z, s.to, v0, h);
-      if (s.side === 'u0') b.box('floorWood', u0 - d, s.from, z, u0, s.to, h);
-      if (s.side === 'u1') b.box('floorWood', u1, s.from, z, u1 + d, s.to, h);
+    for (let i = 0; i < n; i++) {
+      const h = z + (P.podium * (i + 1)) / n, d = 0.3 * (n - i);
+      if (s.side === 'v1') b.box('stepStone', s.from, v1, z, s.to, v1 + d, h);
+      if (s.side === 'v0') b.box('stepStone', s.from, v0 - d, z, s.to, v0, h);
+      if (s.side === 'u0') b.box('stepStone', u0 - d, s.from, z, u0, s.to, h);
+      if (s.side === 'u1') b.box('stepStone', u1, s.from, z, u1 + d, s.to, h);
     }
   }
   // модульные диваны спинками к кашпо колодцев, лицом в «крест» проходов, на свободном конце — белый
@@ -1004,13 +1022,15 @@ function photoZone(ctx, zn) {
 function conference(ctx, zn) {
   const { b, I, z, top, lights } = ctx;
   const [u0, v0, u1, v1] = zn.rect;
-  // LED-экран на ЮЗ стене, сцена, мурал «цифровой город» на СВ стене
-  uvPanel(b, 'slide', [u0, 11.2], [u0, 5.4], z + 0.5, z + 3.6, 0.2);
-  b.box('black', u0 + 0.1, 5.2, z + 0.35, u0 + 0.16, 11.4, z + 3.8);
-  b.box('floorGray', u0 + 0.1, 3.6, z, u0 + 2.6, 13.0, z + 0.3);
+  // ЮЗ стена графитовая со ступенчатыми ромбами, на ней LED-экран ~5 × 2,6 м без сцены (панорама RQJ);
+  // мурал «цифровой город» на СВ стене
+  // фальш-стена стоит перед колоннами оси (на панораме колонн у экрана не видно)
+  b.box('confWall', u0 + 0.31, 3.4, z, u0 + 0.34, 13.4, top - 0.05);
+  b.box('black', u0 + 0.34, 5.7, z + 0.5, u0 + 0.38, 10.9, z + 3.25);
+  uvPanel(b, 'slide', [u0, 10.8], [u0, 5.8], z + 0.6, z + 3.15, 0.39);
   b.box('pixelMural', u1 - 0.14, v0 + 2.8, z + 0.2, u1 - 0.1, v1 - 3.0, z + 3.9);
-  // ряды белых стульев лицом к экрану
-  for (let u = u0 + 3.6; u < u1 - 2.1; u += 0.95) for (let v = v0 + 1.6; v < v1 - 2.0; v += 0.55) {
+  // ряды белых стульев лицом к экрану (первый ряд ~5 м от экрана)
+  for (let u = u0 + 5.0; u < u1 - 2.1; u += 0.95) for (let v = v0 + 1.6; v < v1 - 2.0; v += 0.55) {
     if (Math.abs(v - 8.3) < 0.55) continue;
     I('pchair', F.plasticChairGeo, 'chairWhite').push(mtx(u, v, z, Math.PI / 2));
   }

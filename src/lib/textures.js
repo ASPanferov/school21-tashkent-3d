@@ -199,6 +199,44 @@ export function pixelCarpet({ a = '#3d5a8a', b = '#8f98a6', c2 = '#5a79ad', seed
   return withMaps(t, hgt, null, px, px, 1.2, [8, 8]);
 }
 
+// Ковролин конференц-зала: синий с бежевыми ступенчатыми диагоналями (панорама RQJ)
+export function stepCarpet({ a = '#323b5c', b = '#cdbf9f', seed = 29 } = {}) {
+  const px = P2(512), n = 16;
+  const [c, ctx] = canvas(px, px);
+  const r = rng(seed);
+  ctx.fillStyle = a; ctx.fillRect(0, 0, px, px);
+  const cell = px / n;
+  ctx.fillStyle = b;
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const d = (i + j) % 8;
+    if (d === 0 || (d === 1 && r() < 0.7) || (d === 4 && (i % 4 === 0) && r() < 0.8)) ctx.fillRect(i * cell, j * cell, cell, cell);
+  }
+  noise(ctx, px, px, 22, seed, 2);
+  const t = tex(c, [8, 8]);
+  const hgt = whiteNoise(px, px, seed + 9).map((v) => v * 0.5);
+  carveGrid(hgt, px, px, 16, 16, 1.0, 0.4);
+  return withMaps(t, hgt, null, px, px, 1.2, [8, 8]);
+}
+
+// Графитовая стена за LED-экраном: ступенчатые ромбы серым (узор ковра, панорама RQJ)
+export function stepWall({ bg = '#2f3237', line = '#5d6168', meters = [2.4, 2.4] } = {}) {
+  const px = P2(512), n = 24, s = px / n;
+  const [c, ctx] = canvas(px, px);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, px, px);
+  ctx.fillStyle = line;
+  for (const [cx, cy] of [[0, 0], [12, 12], [24, 0], [0, 24], [24, 24]]) {
+    for (const rad of [3, 7, 11]) {
+      for (let k = -rad; k <= rad; k++) {
+        const w = rad - Math.abs(k);
+        ctx.fillRect((cx + w) * s, (cy + k) * s, s, s);
+        ctx.fillRect((cx - w) * s, (cy + k) * s, s, s);
+      }
+    }
+  }
+  noise(ctx, px, px, 10, 5, 2);
+  return tex(c, meters);
+}
+
 // Дерево (кашпо, пол лаунжа, столешницы): волокна + швы досок
 export function wood({ base = '#8a5a33', dark = '#5e3a1f', seed = 5, planks = 6, meters = [2.4, 1.2], rough = 0.5 } = {}) {
   const px = P2(512);
@@ -242,13 +280,13 @@ export function wood({ base = '#8a5a33', dark = '#5e3a1f', seed = 5, planks = 6,
 export function pinkStone(seed = 13) {
   const px = P2(512);
   const [c, ctx] = canvas(px, px);
-  ctx.fillStyle = '#d4a896'; ctx.fillRect(0, 0, px, px);
+  ctx.fillStyle = '#dfbba5'; ctx.fillRect(0, 0, px, px);   // светлый персиковый туф (панорамы 0fA, Jfv)
   const r = rng(seed);
   const hgt = fbm(px, px, px / 6, seed, 4).map((v) => v * 0.15);
   for (let i = 0; i < 2600; i++) {
     const g = r();
     const x = r() * px, y = r() * px, rx = 1 + r() * 5, ry = 0.8 + r() * 3;
-    ctx.fillStyle = g < 0.5 ? `rgba(245,215,200,${0.2 + r() * 0.3})` : `rgba(165,110,95,${0.1 + r() * 0.25})`;
+    ctx.fillStyle = g < 0.5 ? `rgba(245,222,205,${0.2 + r() * 0.3})` : `rgba(170,120,100,${0.06 + r() * 0.2})`;
     ctx.beginPath(); ctx.ellipse(x, y, rx, ry, r() * 3, 0, 7); ctx.fill();
     // поры
     if (g >= 0.5) for (let yy = Math.max(0, Math.floor(y - ry)); yy < Math.min(px, y + ry); yy++) for (let xx = Math.max(0, Math.floor(x - rx)); xx < Math.min(px, x + rx); xx++) hgt[yy * px + xx] -= 0.25;
