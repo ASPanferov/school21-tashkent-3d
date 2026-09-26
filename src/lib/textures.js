@@ -813,3 +813,100 @@ export function books(seed = 61) {
   }
   return tex(c, [1.8, 2.2]);
 }
+
+// ── v4: отделки по панорамам 360°-тура ───────────────────────────────────────
+
+// Терраццо дна атриума: тёплая бежево-коричневая основа, крупная каменная крошка
+// (серый, графит, кремовый, охра) и широкие зелёные полосы-«ручьи».
+export function terrazzo(seed = 131) {
+  const px = P2(1024);
+  const [c, ctx] = canvas(px, px);
+  const r = rng(seed);
+  ctx.fillStyle = '#b8977a'; ctx.fillRect(0, 0, px, px);
+  noise(ctx, px, px, 18, seed, 2);
+  const sc = px / 1024;
+  // зелёные полосы (текстура 4 × 4 м, две ломаные полосы по 0,35 м)
+  ctx.fillStyle = '#6f9b72';
+  const band = (pts) => {
+    ctx.lineWidth = 90 * sc; ctx.strokeStyle = '#6f9b72'; ctx.lineJoin = 'miter';
+    ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * px, y * px) : ctx.moveTo(x * px, y * px))); ctx.stroke();
+  };
+  band([[-0.1, 0.18], [0.32, 0.18], [0.58, 0.44], [1.1, 0.44]]);
+  band([[0.72, -0.1], [0.72, 0.12], [0.9, 0.3], [0.9, 1.1]]);
+  band([[-0.1, 0.78], [0.2, 0.78], [0.42, 1.0], [0.42, 1.1]]);
+  noise(ctx, px, px, 10, seed + 1, 2);
+  // крошка
+  const cols = ['#8b8f93', '#2c2d30', '#ece3cf', '#d4ad5a', '#f3efe6', '#7b8898', '#a45a3c', '#5b5f63'];
+  for (let i = 0; i < 1500; i++) {
+    const x = r() * px, y = r() * px, R = (6 + r() * r() * 34) * sc;
+    ctx.fillStyle = cols[Math.floor(r() * cols.length)];
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    const n = 4 + Math.floor(r() * 3), a0 = r() * 6.28;
+    for (let k = 0; k < n; k++) { const a = a0 + (k / n) * 6.28 + (r() - 0.5) * 0.6, rr = R * (0.6 + r() * 0.5); ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  const t = tex(c, [4, 4]);
+  const hgt = new Float32Array(px * px);
+  const rough = new Float32Array(px * px).fill(0.18);
+  return withMaps(t, hgt, rough, px, px, 0.3, [4, 4]);
+}
+
+// Стена фонда вдоль коридора 1 этажа: белая с рассыпанными квадратами (мятный, сиреневый, серый)
+export function desWall(seed = 137) {
+  const px = P2(512);
+  const [c, ctx] = canvas(px, px);
+  const r = rng(seed);
+  ctx.fillStyle = '#f3f3f1'; ctx.fillRect(0, 0, px, px);
+  const n = 16, cell = px / n;
+  const cols = ['#9ed6c8', '#c9b7e0', '#cfd1d4', '#b7a4d6', '#8ccfbf'];
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    if (r() < 0.45) continue;
+    ctx.fillStyle = cols[Math.floor(r() * cols.length)];
+    const s = cell * (0.42 + r() * 0.18);
+    ctx.fillRect(i * cell + (cell - s) / 2, j * cell + (cell - s) / 2, s, s);
+  }
+  return tex(c, [3.2, 3.2]);
+}
+
+// Надпись на стене фонда: «21 DIGITAL ENGINEERING SCHOOL» пиксельным серым шрифтом
+export function desText() {
+  const w = 2048, h = 256;
+  const [c, ctx] = canvas(w, h);
+  ctx.fillStyle = '#f3f3f1'; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#6b6f76';
+  ctx.font = '700 150px "JetBrains Mono", monospace';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('21', 40, h / 2);
+  ctx.font = '600 92px "JetBrains Mono", monospace';
+  ctx.fillText('DIGITAL ENGINEERING SCHOOL', 330, h / 2 + 6);
+  return tex(c, [1, 1], { repeat: false });
+}
+
+// Стена игровой 2 этажа: тёмная с пиксельным «PLAY!»
+export function playWall() {
+  const w = 1536, h = 768;
+  const [c, ctx] = canvas(w, h);
+  ctx.fillStyle = '#1b1c22'; ctx.fillRect(0, 0, w, h);
+  const glyph = {
+    P: ['1110', '1001', '1110', '1000', '1000'], L: ['1000', '1000', '1000', '1000', '1111'],
+    A: ['0110', '1001', '1111', '1001', '1001'], Y: ['1001', '1001', '0110', '0100', '0100'], '!': ['1', '1', '1', '0', '1'],
+  };
+  const cols = ['#f25c9b', '#8b5cf6', '#3fb4f0', '#f5c542', '#52d67a'];
+  const cell = 46, r = rng(7);
+  let x0 = 170;
+  for (const ch of 'PLAY!') {
+    const g = glyph[ch];
+    g.forEach((row, j) => [...row].forEach((b, i) => {
+      if (b !== '1') return;
+      ctx.fillStyle = cols[Math.floor(r() * cols.length)];
+      ctx.fillRect(x0 + i * cell + 3, 200 + j * cell + 3, cell - 6, cell - 6);
+    }));
+    x0 += (g[0].length + 1) * cell;
+  }
+  // рассыпанные «пиксели» вокруг
+  for (let i = 0; i < 90; i++) { ctx.fillStyle = cols[Math.floor(r() * cols.length)]; ctx.globalAlpha = 0.35 + r() * 0.4; const s = 10 + r() * 22; ctx.fillRect(r() * w, r() * h, s, s); }
+  ctx.globalAlpha = 1;
+  return tex(c, [1, 1], { repeat: false });
+}

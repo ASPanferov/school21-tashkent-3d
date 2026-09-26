@@ -199,7 +199,12 @@ export function buildShell(mats) {
         case 'block': {
           const l1 = seg.l1 || 'glass';
           if (l1 === 'entrance') entranceL1(side, seg);
-          else if (l1 === 'recessed') {
+          else if (l1 === 'open') {
+            // бок портика: 1 этаж открыт, по краю — балка перекрытия и ограждение
+            fbox(side, s0, s1, Z1 + CANOPY.soffit, F.l2Glass, -0.1, 0.03, 'acp');
+            const [ua, va] = toUV(side, s0 + 0.2, -0.1), [ub, vb] = toUV(side, s1 - 0.1, -0.1);
+            railing(bands.L1, [ua, va, Z1 + 0.95], [ub, vb, Z1 + 0.95], { mat: 'steelExt', bars: 3, step: 1.3 });
+          } else if (l1 === 'recessed') {
             plinth(side, s0, s1, Z1);
             glazing(side, s0, s1, Z1 + 0.02, Z1 + CANOPY.soffit, 'glassDark', { n: -0.2, rows: [Z1 + 2.7] });
             // выносная полоса-софит 3.3–4.25 (продолжение козырька) с точечными светильниками
@@ -244,44 +249,38 @@ export function buildShell(mats) {
   function entranceL1(side, seg) {
     const g = ENTRANCE.glazing || { u0: seg.s0, u1: seg.s1 - 1.8, h: 3.3 };
     const doors = ENTRANCE.doors || [];
+    const dv = g.v ?? 0;                       // витраж утоплен в глубину портика на dv
     const cnt = Math.max(1, Math.round((g.u1 - g.u0) / F.module));
     const st = (g.u1 - g.u0) / cnt;
     const doorH = doors[0]?.h ?? 2.7;
-    // дверной модуль — тот, чей центр внутри проёма; стойки внутри проёма не ставим
+    const n0 = -dv - 0.03, n1 = -dv;
     const inDoor = (a, b) => doors.some((d) => (a + b) / 2 > d.u0 && (a + b) / 2 < d.u1);
     const midDoor = (s) => doors.some((d) => s > d.u0 + 0.15 && s < d.u1 - 0.15);
     for (let i = 0; i < cnt; i++) {
       const a = g.u0 + i * st, b = a + st;
-      if (inDoor(a, b)) fbox(side, a, b, doorH, g.h, -0.03, 0, 'glassDark', { perLevel: true });   // фрамуга над дверью
-      else fbox(side, a, b, Z1, g.h, -0.03, 0, 'glassDark', { perLevel: true });
+      if (inDoor(a, b)) fbox(side, a, b, doorH, g.h, n0, n1, 'glassDark', { perLevel: true });
+      else fbox(side, a, b, Z1, g.h, n0, n1, 'glassDark', { perLevel: true });
     }
-    // чёрные рамы на модуле, без стойки посередине дверного проёма
     for (let i = 0; i <= cnt; i++) {
       const s = g.u0 + i * st;
-      if (midDoor(s)) { fbox(side, s - 0.03, s + 0.03, doorH, g.h, -0.08, 0.06, 'frameBlack'); continue; }
-      fbox(side, s - 0.03, s + 0.03, Z1, g.h, -0.08, 0.06, 'frameBlack');
+      if (midDoor(s)) { fbox(side, s - 0.03, s + 0.03, doorH, g.h, n0 - 0.05, n1 + 0.06, 'frameBlack'); continue; }
+      fbox(side, s - 0.03, s + 0.03, Z1, g.h, n0 - 0.05, n1 + 0.06, 'frameBlack');
     }
-    fbox(side, g.u0, g.u1, doorH - 0.04, doorH + 0.04, -0.08, 0.06, 'frameBlack');
-    fbox(side, g.u0, g.u1, g.h - 0.06, g.h, -0.08, 0.06, 'frameBlack');
-    // нижняя обвязка — только вне дверей (порог заподлицо)
-    for (let i = 0; i < cnt; i++) { const a = g.u0 + i * st, b = a + st; if (!inDoor(a, b)) fbox(side, a, b, Z1, Z1 + 0.06, -0.08, 0.06, 'frameBlack'); }
-    // створки раздвижных дверей — отъехали за соседние глухие стёкла (изнутри)
+    fbox(side, g.u0, g.u1, doorH - 0.04, doorH + 0.04, n0 - 0.05, n1 + 0.06, 'frameBlack');
+    fbox(side, g.u0, g.u1, g.h - 0.06, g.h, n0 - 0.05, n1 + 0.06, 'frameBlack');
+    for (let i = 0; i < cnt; i++) { const a = g.u0 + i * st, b = a + st; if (!inDoor(a, b)) fbox(side, a, b, Z1, Z1 + 0.06, n0 - 0.05, n1 + 0.06, 'frameBlack'); }
+    // распашные стеклянные двери — открыты внутрь
     for (const d of doors) {
       const w = (d.u1 - d.u0) / 2;
-      for (const [a, b] of [[d.u0 - w + 0.06, d.u0 + 0.06], [d.u1 - 0.06, d.u1 + w - 0.06]]) {
-        fbox(side, a, b, Z1 + 0.01, d.h - 0.04, -0.14, -0.12, 'glassDoor');
-        fbox(side, a, b, Z1 + 0.01, Z1 + 0.09, -0.15, -0.11, 'frameBlack');
-        fbox(side, a, b, d.h - 0.1, d.h - 0.04, -0.15, -0.11, 'frameBlack');
-        fbox(side, a, a + 0.05, Z1 + 0.01, d.h - 0.04, -0.15, -0.11, 'frameBlack');
-        fbox(side, b - 0.05, b, Z1 + 0.01, d.h - 0.04, -0.15, -0.11, 'frameBlack');
+      for (const [a, sgn] of [[d.u0, 1], [d.u1, -1]]) {
+        fbox(side, a + sgn * 0.02 - (sgn < 0 ? 0.04 : 0), a + sgn * 0.02 + (sgn > 0 ? 0.04 : 0), Z1 + 0.01, d.h - 0.04, n0 - w, n0 - 0.02, 'glassDoor');
+        fbox(side, a - 0.03, a + 0.03, Z1 + 0.01, d.h - 0.04, n0 - w, n0 - 0.02, 'frameBlack');
       }
-      // короб привода над дверями (внутри)
-      fbox(side, d.u0 - w, d.u1 + w, d.h - 0.02, d.h + 0.22, -0.3, -0.1, 'frameBlack');
     }
-    // восточнее витража — глухая панель «тауп» (под козырьком)
-    fbox(side, g.u1, seg.s1, Z1, g.h, -0.1, 0.04, 'acpTaupe');
-    // над витражом до стекла 2 этажа — зашито (скрыто козырьком)
-    fbox(side, seg.s0, seg.s1, g.h, F.l2Glass, -0.1, 0.03, 'acp');
+    // над витражом до потолка портика
+    fbox(side, g.u0, g.u1, g.h, Z1 + 4.1, n0 - 0.1, n1 + 0.03, 'acp');
+    // по фасадной линии — балка перекрытия над портиком (под ней видна глубина портика)
+    fbox(side, seg.s0, seg.s1, Z1 + CANOPY.soffit, F.l2Glass, -0.1, 0.03, 'acp');
   }
 
   // ── Козырёк: консоль 6.7 м, софит 3.3, верх 4.2, фасция из белых панелей ──

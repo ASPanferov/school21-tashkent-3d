@@ -84,11 +84,9 @@ export function createWalk(ctx) {
   function levelAt(u, v, z) {
     if (!insideFoot(u, v, 0.05)) return null;
     const zones = getZones();
-    for (const zn of zones) {
-      if (zn.type !== 'amphitheater' || !inRect(u, v, zn.rect)) continue;
-      const L = levelById(zn.level);
-      if (L && z < L.z + 0.3 && z > (zn.props?.stageZ ?? L.z - 3) - 0.6) return zn.level;
-    }
+    // дно атриума (лекторий, лаунж −1): всё, что в атриуме ниже пола 1 этажа
+    const A = B.ATRIUM;
+    if (A && inRect(u, v, [A.u0, A.v0, A.u1, A.v1]) && z < (levelById('L1')?.z ?? 0) - 0.45 && z > (A.floor ?? -5) - 0.6) return 'B1';
     const ls = levels().reverse();
     for (const L of ls) {
       if (z < L.z - 0.45) continue;
@@ -107,9 +105,22 @@ export function createWalk(ctx) {
     const core = B.CORES.find((c) => c.levels.includes(levelId) && inRect(u, v, c.rect));
     if (core) return { name: core.name, id: core.id };
     const zs = getZones().filter((zn) => zn.level === levelId && zn.type !== 'void' && inRect(u, v, zn.rect));
-    if (levelId === 'M') for (const s of B.ATRIUM_STAIRS || []) if (u >= s.u0 && u <= s.u1 && v >= s.vBottom && v <= s.vTop) return { name: s.name, id: s.id };
+    for (const s of flightRects()) if (inRect(u, v, s.rect) && Math.abs(here.z - (s.z0 + s.z1) / 2) < (s.z1 - s.z0) / 2 + 0.6) return { name: s.name, id: s.id };
     zs.sort((a, b) => (a.rect[2] - a.rect[0]) * (a.rect[3] - a.rect[1]) - (b.rect[2] - b.rect[0]) * (b.rect[3] - b.rect[1]));
     return zs[0] ? { name: zs[0].name, id: zs[0].id } : { name: '—', id: null };
+  }
+
+  // Прямоугольники открытых маршей (для подписи «где я» и мини-карты)
+  let _fr = null;
+  function flightRects() {
+    if (_fr) return _fr;
+    const D = { '+u': [1, 0], '-u': [-1, 0], '+v': [0, 1], '-v': [0, -1] };
+    _fr = (B.STAIRS || []).filter((s) => s.style !== 'none').map((s) => {
+      const d = D[s.dir], e = [s.a[0] + d[0] * s.len, s.a[1] + d[1] * s.len], hw = s.w / 2;
+      const r = [Math.min(s.a[0], e[0]) - (d[0] ? 0 : hw), Math.min(s.a[1], e[1]) - (d[1] ? 0 : hw), Math.max(s.a[0], e[0]) + (d[0] ? 0 : hw), Math.max(s.a[1], e[1]) + (d[1] ? 0 : hw)];
+      return { id: s.id, name: s.name, rect: r, z0: s.z0, z1: s.z1, level: s.level };
+    });
+    return _fr;
   }
 
   // ── Коллизии ───────────────────────────────────────────────────────────────
@@ -132,7 +143,7 @@ export function createWalk(ctx) {
     const z0 = levelById('L1')?.z ?? 0;
     return entranceDoors().map((d, i) => ({
       id: `main-doors${i || ''}`, mat: /^(glass|mullion)/,
-      box: [sx(d.u0 + 0.06), sy(z0 + 0.03), sz(0.4), sx(d.u1 - 0.06), sy(z0 + (Number.isFinite(d.h) ? d.h : 3.3) - 0.1), sz(-0.4)],
+      box: [sx(d.u0 + 0.06), sy(z0 + 0.03), sz((d.v ?? 0) + 0.4), sx(d.u1 - 0.06), sy(z0 + (Number.isFinite(d.h) ? d.h : 3.3) - 0.1), sz((d.v ?? 0) - 0.4)],
     }));
   }
   function shafts() {
@@ -197,9 +208,9 @@ export function createWalk(ctx) {
   // Точки «входа» на этаж: центры общих зон (лобби, галерея, площадка…), а если центр
   // попал во второй свет — точки у краёв зоны. Сначала самые «общественные».
   function levelAnchors(id) {
-    const pref = ['lobby', 'gallery', 'platform', 'lounge', 'corridor', 'cluster', 'kitchen', 'library'];
+    const pref = ['lobby', 'hall', 'gallery', 'platform', 'atrium', 'lounge3', 'lounge', 'foyer', 'corridor', 'cluster', 'kitchen'];
     const zones = getZones().filter((zn) => zn.level === id);
-    const voids = zones.filter((zn) => zn.type === 'void').map((zn) => zn.rect);
+    const voids = [...zones.filter((zn) => zn.type === 'void').map((zn) => zn.rect), ...((B.SLAB_HOLES || {})[id] || [])];
     const zs = zones.filter((zn) => pref.includes(zn.type));
     zs.sort((a, b) => pref.indexOf(a.type) - pref.indexOf(b.type) || (b.rect[2] - b.rect[0]) * (b.rect[3] - b.rect[1]) - (a.rect[2] - a.rect[0]) * (a.rect[3] - a.rect[1]));
     const out = [];
@@ -463,8 +474,9 @@ export function createWalk(ctx) {
       const g = lv[L.id];
       if (!g) continue;
       let vis;
-      if (L.basement) vis = inside && (z < ground - 2.9 || inShaft);   // амфитеатр (−2,7) — ещё не подвал
-      else vis = !inside || (L.z >= z - 5.0 && L.z <= z + 7.6);   // свой этаж, соседние и полуэтажи
+      if (L.basement) vis = inside && (z < ground - 2.9 || inShaft);
+      else if (L.id === 'B1') vis = true;                            // дно атриума видно с галерей и площадки
+      else vis = !inside || (L.z >= z - 5.0 && L.z <= z + 9.1);   // свой этаж, соседние и полуэтажи
       if (g.visible !== vis) g.visible = vis;
       if (g.userData.ceiling && !g.userData.ceiling.visible) g.userData.ceiling.visible = true;
     }
@@ -535,7 +547,7 @@ export function createWalk(ctx) {
         g.stroke(); g.lineWidth = 0.6;
       }
     }
-    if (L?.partial) for (const s of B.ATRIUM_STAIRS || []) rect([s.u0, s.vBottom, s.u1, s.vTop], TONE.grandstair, 'rgba(10,16,16,0.5)');
+    for (const s of flightRects()) if (s.level === lvl || (lvl === 'L1' && (s.level === 'M' || s.level === 'B1')) || (lvl === 'M' && s.level === 'M') || (lvl === 'B1' && s.level === 'B1')) rect(s.rect, TONE.grandstair, 'rgba(10,16,16,0.5)');
     // атриум и контур
     g.setLineDash([2, 2]); g.strokeStyle = 'rgba(255,255,255,0.55)';
     rect([B.ATRIUM.u0, B.ATRIUM.v0, B.ATRIUM.u1, B.ATRIUM.v1], null, 'rgba(255,255,255,0.55)');
@@ -544,7 +556,7 @@ export function createWalk(ctx) {
     rect([0, 0, B.SIZE, B.SIZE], null, 'rgba(255,255,255,0.85)');
     // вход
     g.fillStyle = '#37d3b6';
-    for (const d of entranceDoors()) g.fillRect(mx(d.u0), my(0) - 1.5, mx(d.u1) - mx(d.u0), 3);
+    for (const d of entranceDoors()) g.fillRect(mx(d.u0), my(d.v ?? 0) - 1.5, mx(d.u1) - mx(d.u0), 3);
     mapLayer = c;
   }
   function drawMap() {

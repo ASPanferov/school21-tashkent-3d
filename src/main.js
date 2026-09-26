@@ -387,18 +387,15 @@ function tuneEnv() {
 }
 
 // ── Разрез по этажам ─────────────────────────────────────────────────────────
-const ORDER = ['B2', 'B1', 'L1', 'M', 'L2', 'L3'];
-const CEIL_OWNER = { B2: 'B1', B1: 'L1', L1: 'L2', M: 'L3', L2: 'L3', L3: 'ROOF' };
+const ORDER = ['B1', 'L1', 'M', 'L2', 'L3'];
+// потолок уровня виден, когда виден уровень-«хозяин» (плита над ним):
+// лекторий −1 накрыт площадкой, атриум — плитой лаунжа 3 этажа
+const CEIL_OWNER = { B1: 'M', L1: 'L2', M: 'L3', L2: 'L3', L3: 'ROOF' };
 function applyCut(cut) {
   state.cut = cut;
   const ci = cut ? ORDER.indexOf(cut) : ORDER.length;
   const visible = {};
-  for (const id of ORDER) {
-    const i = ORDER.indexOf(id);
-    const basement = id === 'B1' || id === 'B2';
-    visible[id] = cut ? i <= ci : !basement;
-    if (cut && basement && !(cut === 'B1' || cut === 'B2')) visible[id] = false;
-  }
+  for (const id of ORDER) visible[id] = cut ? ORDER.indexOf(id) <= ci : true;
   visible.ROOF = !cut;
   for (const id of ORDER) {
     const g = world.interior.levels[id];
@@ -407,10 +404,10 @@ function applyCut(cut) {
   }
   // пояса фасада
   const bandVisible = { L1: !cut || ci >= ORDER.indexOf('L1'), L2: !cut || ci >= ORDER.indexOf('L2'), L3: !cut || ci >= ORDER.indexOf('L3'), ROOF: !cut };
-  if (cut === 'B1' || cut === 'B2') { bandVisible.L1 = false; bandVisible.L2 = false; bandVisible.L3 = false; }
+  if (cut === 'B1') { bandVisible.L1 = false; bandVisible.L2 = false; bandVisible.L3 = false; }
   for (const b of BANDS) world.shell[b.id].visible = bandVisible[b.id];
   // земля мешает смотреть в подвал
-  world.site.children.forEach((c) => { if (c.name === 'site-ground') c.visible = !(cut === 'B1' || cut === 'B2'); });
+  world.site.children.forEach((c) => { if (c.name === 'site-ground') c.visible = cut !== 'B1'; });
   // стекло верхнего видимого пояса — прозрачнее, чтобы видеть интерьер сбоку
   const topBand = cut ? (ci >= ORDER.indexOf('L3') ? 'L3' : ci >= ORDER.indexOf('L2') ? 'L2' : 'L1') : null;
   for (const m of mats.cache.values()) {
@@ -439,18 +436,22 @@ function updateDetailVisibility() {
 
 // ── Подписи зон в разрезе ────────────────────────────────────────────────────
 const TYPE_NAMES = {
-  cluster: 'Кластер', lobby: 'Лобби', corridor: 'Коридор', lounge: 'Лаунж', amphitheater: 'Амфитеатр', platform: 'Выставочная зона',
-  void: 'Второй свет', kitchen: 'Кухня', meeting: 'Переговорная', conference: 'Конференц-зал', game: 'Игровая', pingpong: 'Пинг-понг',
-  server: 'Серверная', library: 'Библиотека', stair: 'Лестница', lift: 'Лифты', wc: 'Санузлы', tech: 'Техпомещение', office: 'Офис',
-  wardrobe: 'Гардероб', storage: 'Склад', gallery: 'Галерея', turnstiles: 'Турникеты', photozone: 'Фотозона', grandstair: 'Лестница',
+  cluster: 'Кластер', lobby: 'Лобби', hall: 'Холл', foyer: 'Фойе', corridor: 'Проход', lounge: 'Лаунж', lounge3: 'Лаунж под пирамидой',
+  amphitheater: 'Лекторий', atrium: 'Атриум −1', platform: 'Парящая площадка', porch: 'Портик', kitchen: 'Кухня', meeting: 'Переговорная',
+  conference: 'Конференц-зал', game: 'Игровая', pingpong: 'Пинг-понг', server: 'Серверная', library: 'Библиотека (закрыто)',
+  stair: 'Лестница', lift: 'Лифты', wc: 'Санузлы', office: 'Офис', cowork: 'Коворкинг', booths: 'Кабинки', stairhall: 'Лестница',
+  wardrobe: 'Гардероб', gallery: 'Галерея', turnstiles: 'Турникеты', photozone: 'Фотозона',
 };
+// мест в кластере — по рядам столов из DESKS
+const seatsOf = (cluster, level) => B.DESKS.filter((d) => d.cluster === cluster && d.level === level)
+  .reduce((n, d) => n + 2 * Math.max(1, Math.round((Math.abs(d.to - d.from) - 0.6) / 1.2)), 0);
 function updateLabels() {
   for (const l of world.labels) { l.parent?.remove(l); l.element.remove(); }
   world.labels = [];
   if (!state.cut || state.view !== '3d') return;
   const lv = B.LEVELS.find((l) => l.id === state.cut);
-  const zs = ZONES.filter((z) => z.level === state.cut && !['void', 'turnstiles', 'photozone', 'corridor'].includes(z.type));
-  if (state.cut === 'L1') zs.push(...ZONES.filter((z) => z.level === 'M'));
+  const zs = ZONES.filter((z) => z.level === state.cut && !['turnstiles', 'photozone', 'corridor', 'stairhall', 'porch'].includes(z.type));
+  if (state.cut === 'L1' || state.cut === 'M') zs.push(...ZONES.filter((z) => z.level === 'B1' || (state.cut === 'L1' && z.level === 'M')));
   for (const z of zs) {
     const [u0, v0, u1, v1] = z.rect;
     const area = (u1 - u0) * (v1 - v0);
@@ -458,10 +459,12 @@ function updateLabels() {
     const el = document.createElement('div');
     el.className = 'zlabel' + (z.confidence === 'inferred' ? ' inferred' : '');
     el.textContent = z.name;
-    if (z.type === 'cluster') { const s = document.createElement('b'); s.textContent = `${(z.props?.rows ?? 7) * 10} мест`; el.appendChild(s); }
+    if (z.type === 'cluster') { const s = document.createElement('b'); s.textContent = `${seatsOf(z.cluster, z.level)} мест`; el.appendChild(s); }
     const o = new CSS2DObject(el);
     const zl = B.LEVELS.find((l) => l.id === z.level).z;
-    o.position.copy(P((u0 + u1) / 2, (v0 + v1) / 2, (z.type === 'amphitheater' ? -1 : zl) + 1.2));
+    const lz = z.type === 'amphitheater' ? B.AMPHI.walkZ : z.type === 'lounge3' ? zl + 0.45 : zl;
+    const [lu, lv] = z.type === 'atrium' ? [28.2, 33.2] : z.type === 'amphitheater' ? [20.4, 27.2] : [(u0 + u1) / 2, (v0 + v1) / 2];
+    o.position.copy(P(lu, lv, lz + 1.2));
     scene.add(o);
     world.labels.push(o);
   }
@@ -472,10 +475,11 @@ function updateLabels() {
 const PRESETS = [
   { id: 'front', name: 'Вход', pos: [66, -27, 0.6], tgt: [40, 1, 7.2], cut: null },
   { id: 'aerial', name: 'С высоты', pos: [-60, -95, 95], tgt: [27.6, 27.6, 4], cut: null },
-  { id: 'atrium', name: 'Атриум', pos: [21.6, 16.3, 6.3], tgt: [21.4, 32, 2.9], cut: null, inside: true },
-  { id: 'amph', name: 'Амфитеатр', pos: [27.2, 19.4, 4.3], tgt: [26.4, 9.6, -2.3], cut: null, inside: true },
-  { id: 'lounge', name: 'Лаунж под пирамидой', pos: [13.6, 19.8, 11.1], tgt: [25, 32, 12.8], cut: null, inside: true },
-  { id: 'tashkent', name: 'Кластер Tashkent', pos: [15.8, 13.2, 6.2], tgt: [33, 3.5, 5.4], cut: null, inside: true },
+  { id: 'hall', name: 'Холл и турникеты', pos: [53.6, 8.2, 1.7], tgt: [44.5, 22, 1.2], cut: null, inside: true },
+  { id: 'atrium', name: 'Площадка со статуей', pos: [30.2, 35.6, 6.4], tgt: [16.5, 24.5, 2.6], cut: null, inside: true },
+  { id: 'amph', name: 'Лекторий и атриум −1', pos: [24.3, 30.3, 0.0], tgt: [15.6, 22.2, -3.4], cut: null, inside: true },
+  { id: 'lounge', name: 'Лаунж под пирамидой', pos: [13.8, 19.8, 11.1], tgt: [25, 32, 11.4], cut: null, inside: true },
+  { id: 'tashkent', name: 'Кластер Tashkent', pos: [23.2, 43.4, 6.2], tgt: [4, 53, 5.0], cut: null, inside: true },
   { id: 'cut2', name: 'Разрез 2 этажа', pos: [27.6, -38, 58], tgt: [27.6, 27.6, 4.5], cut: 'L2' },
   { id: 'cut1', name: 'Разрез 1 этажа', pos: [70, -36, 46], tgt: [27.6, 24, 0], cut: 'M' },
   { id: 'walk', name: 'Прогулка', walk: true },
@@ -585,12 +589,13 @@ function select(sel) {
   if (sel?.kind === 'zone') {
     const z = ZONES.find((q) => q.id === sel.id);
     const L = B.LEVELS.find((l) => l.id === z.level);
-    const z0 = z.type === 'amphitheater' ? (z.props?.stageZ ?? -2.7) : L.z;
-    box(z.rect[0], z.rect[1], z0 + 0.02, z.rect[2], z.rect[3], L.z + (z.level === 'M' ? 6.3 : L.h) - 0.4);
+    const z0 = z.type === 'amphitheater' ? B.AMPHI.stageZ : L.z;
+    const z1 = z.type === 'amphitheater' ? B.PLATFORM.z - 0.4 : (L.top ?? L.z + 4.5) - 0.4;
+    box(z.rect[0], z.rect[1], z0 + 0.02, z.rect[2], z.rect[3], z1);
   } else if (sel?.kind === 'core') {
     const c = B.CORES.find((q) => q.id === sel.id);
     const L = B.LEVELS.find((l) => l.id === sel.level);
-    box(c.rect[0], c.rect[1], L.z + 0.02, c.rect[2], c.rect[3], L.z + L.h - 0.4);
+    box(c.rect[0], c.rect[1], L.z + 0.02, c.rect[2], c.rect[3], (L.top ?? L.z + 4.5) - 0.4);
   } else if (sel?.kind === 'facade') {
     const S = B.SIZE;
     const r = { SE: [0, -1, S, 0], NE: [S, 0, S + 1, S], NW: [0, S, S, S + 1], SW: [-1, 0, 0, S] }[sel.id];
@@ -657,7 +662,7 @@ function renderInspector() {
       <dt>Размер</dt><dd class="mono">${fmt(u1 - u0)} × ${fmt(v1 - v0)} м</dd>
       <dt>Площадь</dt><dd class="mono">${fmt((u1 - u0) * (v1 - v0))} м²</dd>
       <dt>Оси</dt><dd class="mono">${axis(u0, B.GRID.u, B.GRID.labelsU)}–${axis(u1, B.GRID.u, B.GRID.labelsU)} / ${axis(v0, B.GRID.v, B.GRID.labelsV)}–${axis(v1, B.GRID.v, B.GRID.labelsV)}</dd>
-      ${z.type === 'cluster' ? `<dt>Мест</dt><dd class="mono">${(z.props?.rows ?? 7) * 10}</dd>` : ''}
+      ${z.type === 'cluster' ? `<dt>Мест</dt><dd class="mono">${seatsOf(z.cluster, z.level)}</dd>` : ''}
     </dl>
     ${z.note ? `<p class="note">${esc(z.note)}</p>` : ''}
     ${state.edit ? editForm(z) : `<p class="note">Нашли неточность? Включите «Редактор» и поправьте границы — модель пересоберётся.</p>`}`;
@@ -711,7 +716,7 @@ function wireEditForm(z) {
 }
 function wireEditorGlobal() {
   $('e-add').onclick = () => {
-    const lv = state.cut && state.cut !== 'B1' && state.cut !== 'B2' ? state.cut : 'L1';
+    const lv = state.cut || 'L1';
     const id = `new-${Date.now().toString(36)}`;
     ZONES.push({ id, level: lv, type: 'office', name: 'Новая зона', rect: [24.6, 24.6, 30.6, 30.6], confidence: 'inferred', note: '' });
     commitEdits();
@@ -803,7 +808,7 @@ function showPlan() {
   });
 }
 $('v-3d').onclick = () => setView('3d');
-$('v-plan').onclick = () => { if (state.cut && !['B1', 'B2'].includes(state.cut)) state.planLevel = state.cut; setView('plan'); };
+$('v-plan').onclick = () => { if (state.cut) state.planLevel = state.cut; setView('plan'); };
 $('v-site').onclick = () => setView('site');
 $('t-day').onclick = () => applyTime('day');
 $('t-eve').onclick = () => applyTime('eve');
@@ -828,7 +833,7 @@ $('b-about').onclick = () => {
   m.innerHTML = `<div class="card">
     <h2>О модели</h2>
     <p>Реконструкция кампуса School 21 в Ташкенте (ул. Зиёлилар, 13). Здание — бывшая Фундаментальная библиотека Академии наук РУз, открытая в сентябре 1982 года; кампус School 21 открылся здесь 2 октября 2024 года: около 8 100 м², 10 кластеров, 700 рабочих мест, работает 24/7.</p>
-    <p>Масштаб 1:1, метры. Контур и ориентация — по OpenStreetMap и спутниковому снимку (квадрат ≈55 × 55 м, повёрнут на 39°), высоты — по фото фасада. Три этажа над землёй, «парящая площадка» на +2,25 и два подвальных уровня. Планировки восстановлены по фото и видео-экскурсии; то, чего не видно, достроено по логике здания — это помечено режимом «Достоверность».</p>
+    <p>Масштаб 1:1, метры. Контур и ориентация — по OpenStreetMap и спутниковому снимку (квадрат ≈55 × 55 м, повёрнут на 39°), высоты — по фото фасада. Четыре уровня School 21: атриум −1 (лекторий и лаунж на дне атриума), 1, 2 и 3 этажи, плюс «парящая площадка» +2,25 над лекторием. Планировки сняты с поэтажных планов 360°-тура uzbekistan360 и сверены с 70 панорамами, видео-экскурсией и фото; то, чего не видно, достроено по логике здания — это помечено режимом «Достоверность».</p>
     <p>Всё генерируется из одного файла <span class="mono">src/data/building.js</span>: поправьте цифры — и здание пересоберётся.</p>
     <h2 style="font-size:15px;margin-top:14px">Источники</h2>
     <ul>${B.SOURCES.map((s) => `<li><a href="${s.url}" target="_blank" rel="noopener">${esc(s.label)}</a></li>`).join('')}</ul>
