@@ -159,6 +159,8 @@ export class Materials {
     this.cache.set(key, m);
     return m;
   }
+  // Регистрация нового материала из любого модуля: mats.define('myKey', () => new THREE.MeshStandardMaterial({...}))
+  define(key, factory) { if (!this.specs[key]) this.specs[key] = factory; return this; }
   forLevel(levelId) { return [...this.cache.values()].filter((m) => m.userData.level === levelId); }
   setEnvIntensity(k) { for (const m of this.cache.values()) if ('envMapIntensity' in m) m.envMapIntensity = (m.userData.env0 ??= m.envMapIntensity) * k; }
 }
