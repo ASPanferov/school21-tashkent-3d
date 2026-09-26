@@ -148,7 +148,7 @@ function specs() {
     railMint: () => std({ color: 0xa5cdb9, roughness: 0.7 }),
     // v4: отделки по панорамам 360°-тура
     terrazzo: () => surf(T.terrazzo(), { ns: 0.3 }),
-    girihLilac: () => std({ map: T.girih({ bg: '#f4f2f5', line: '#bda6da', glow: '#cdbbe6', meters: [2.8, 2.8] }), roughness: 0.8 }),
+    girihLilac: () => std({ map: T.girih({ bg: '#f4f2f5', line: '#bea8dc', glow: '#bea8dc', meters: [3.4, 3.4], weight: 2.6 }), roughness: 0.8 }),
     desWall: () => std({ map: T.desWall(), roughness: 0.8 }),
     desText: () => std({ map: T.desText(), roughness: 0.8 }),
     playWall: () => { const t = T.playWall(); return std({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.25, roughness: 0.7 }); },

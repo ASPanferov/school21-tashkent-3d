@@ -238,11 +238,11 @@ export function plantGeo(h = 1.1) {
     leaf.rotateX(-(Math.PI / 2 - up * 1.2));
     leaf.translate(0, stemL * Math.sin(up + 0.4), 0);
     leaf.rotateY(a);
-    leaf.translate(0, h * 0.2, 0);
     parts.push(part(leaf, greens[Math.floor(R() * greens.length)]));
-    if (hi() && k % 2 === 0) {
+    // черешки растут прямо из грунта (без них листья «висят» над кашпо)
+    if (k % 2 === 0 || hi()) {
       const s = cyl(0.008, 0.012, stemL, 0, 0, 0, 4);
-      s.translate(0, stemL / 2, 0); s.rotateX(-(Math.PI / 2 - up) * 0.4); s.rotateY(a); s.translate(0, h * 0.2, 0);
+      s.translate(0, stemL / 2, 0); s.rotateX(-(Math.PI / 2 - up) * 0.4); s.rotateY(a);
       parts.push(part(s, 0x4d6b2e));
     }
   }

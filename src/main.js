@@ -463,7 +463,7 @@ function updateLabels() {
     const o = new CSS2DObject(el);
     const zl = B.LEVELS.find((l) => l.id === z.level).z;
     const lz = z.type === 'amphitheater' ? B.AMPHI.walkZ : z.type === 'lounge3' ? zl + 0.45 : zl;
-    const [lu, lv] = z.type === 'atrium' ? [28.2, 33.2] : z.type === 'amphitheater' ? [20.4, 27.2] : [(u0 + u1) / 2, (v0 + v1) / 2];
+    const [lu, lv] = z.type === 'atrium' ? [28.2, 33.2] : z.type === 'amphitheater' ? [20.4, 27.2] : z.type === 'gallery' ? [u0 + 4.5, v0 + 3.0] : [(u0 + u1) / 2, (v0 + v1) / 2];
     o.position.copy(P(lu, lv, lz + 1.2));
     scene.add(o);
     world.labels.push(o);
@@ -476,9 +476,9 @@ const PRESETS = [
   { id: 'front', name: 'Вход', pos: [66, -27, 0.6], tgt: [40, 1, 7.2], cut: null },
   { id: 'aerial', name: 'С высоты', pos: [-60, -95, 95], tgt: [27.6, 27.6, 4], cut: null },
   { id: 'hall', name: 'Холл и турникеты', pos: [53.6, 8.2, 1.7], tgt: [44.5, 22, 1.2], cut: null, inside: true },
-  { id: 'atrium', name: 'Площадка со статуей', pos: [30.2, 35.6, 6.4], tgt: [16.5, 24.5, 2.6], cut: null, inside: true },
-  { id: 'amph', name: 'Лекторий и атриум −1', pos: [24.3, 30.3, 0.0], tgt: [15.6, 22.2, -3.4], cut: null, inside: true },
-  { id: 'lounge', name: 'Лаунж под пирамидой', pos: [13.8, 19.8, 11.1], tgt: [25, 32, 11.4], cut: null, inside: true },
+  { id: 'atrium', name: 'Площадка со статуей', pos: [33.2, 30.4, 6.5], tgt: [16.0, 25.0, 2.4], cut: null, inside: true },
+  { id: 'amph', name: 'Лекторий и атриум −1', pos: [25.4, 31.6, 0.6], tgt: [16.2, 22.6, -3.6], cut: null, inside: true },
+  { id: 'lounge', name: 'Лаунж под пирамидой', pos: [29.4, 25.9, 11.1], tgt: [15.0, 29.5, 10.4], cut: null, inside: true },
   { id: 'tashkent', name: 'Кластер Tashkent', pos: [23.2, 43.4, 6.2], tgt: [4, 53, 5.0], cut: null, inside: true },
   { id: 'cut2', name: 'Разрез 2 этажа', pos: [27.6, -38, 58], tgt: [27.6, 27.6, 4.5], cut: 'L2' },
   { id: 'cut1', name: 'Разрез 1 этажа', pos: [70, -36, 46], tgt: [27.6, 24, 0], cut: 'M' },

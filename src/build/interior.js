@@ -895,37 +895,63 @@ function lounge3(ctx, zn) {
       if (s.side === 'u1') b.box('floorWood', u1, s.from, z, u1 + d, s.to, h);
     }
   }
-  // модульные диваны и белые ступенчатые столики: вне колодцев и проходов от ступеней
-  const cols = ['#b3263a', '#1f5e4a', '#8e9296', '#e8641c', '#b3263a', '#8e9296', '#2a8f8f'];
-  const mid = P.wells[4];
-  const corr = P.steps.map((st) => st.side === 'v1' ? [st.from - 0.5, mid[3], st.to + 0.5, v1] : st.side === 'v0' ? [st.from - 0.5, v0, st.to + 0.5, mid[1]]
-    : st.side === 'u0' ? [u0, st.from - 0.5, mid[0], st.to + 0.5] : [mid[2], st.from - 0.5, u1, st.to + 0.5]);
-  const hit = (r, q) => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1];
-  const placed = [];
+  // модульные диваны спинками к кашпо колодцев, лицом в «крест» проходов, на свободном конце — белый
+  // ступенчатый столик (панорамы тура bv0, oo5, qis, FYL). Середина креста и подходы от ступеней свободны.
+  const cols = ['#1f4d3f', '#a3202e', '#8e9296', '#e8641c', '#b0574a', '#1f4d3f', '#8e9296', '#2b2b2b'];
+  const PL = 0.55, MOD = 1.1, cu = (u0 + u1) / 2, cv = (v0 + v1) / 2;
   let k = 0;
-  for (let v = v0 + 1.6; v < v1 - 2.6; v += 0.8) for (let u = u0 + 1.6; u < u1 - 2.6; u += 0.8) {
-    const fp = [u - 0.7, v - 0.6, u + 2.1, v + 2.0];
-    if (P.wells.some((w) => hit(fp, [w[0] - 0.8, w[1] - 0.8, w[2] + 0.8, w[3] + 0.8]))) continue;
-    if (corr.some((c) => hit(fp, c))) continue;
-    if (placed.some(([pu, pv]) => Math.hypot(pu - u, pv - v) < 3.4)) continue;
-    placed.push([u, v]);
-    const rot = (R() - 0.5) * 0.3;
-    I('sofaL3', () => F.sofaGeo(2.0), 'fabric').push(mtx(u + 0.6, v, top, rot), cols[k++ % cols.length]);
-    I('sofaL3', () => F.sofaGeo(1.4), 'fabric').push(mtx(u + 1.7, v + 1.2, top, rot + Math.PI / 2), cols[k++ % cols.length]);
-    b.box('tableWhite', u - 0.2, v + 0.75, top, u + 1.0, v + 1.75, top + 0.36);
-    b.box('tableWhite', u + 0.1, v + 1.05, top + 0.36, u + 0.7, v + 1.45, top + 0.6);
-  }
+  // сторона кашпо: axis 'u' — грань на u = fixed вдоль v (s0..s1), n — куда смотрят диваны; tail — где столик
+  const side = (axis, fixed, n, s0, s1, tail) => {
+    const L = s1 - s0, m = Math.min(2, Math.floor((L - 1.0) / MOD));
+    if (m < 1) return;
+    const d = fixed + n * 0.47;
+    const a = tail > 0 ? s0 : s1 - m * MOD;
+    for (let i = 0; i < m; i++) {
+      const s = a + MOD * (i + 0.5);
+      const rot = axis === 'u' ? (n > 0 ? -Math.PI / 2 : Math.PI / 2) : (n > 0 ? 0 : Math.PI);
+      I('sofaL3', () => F.sofaGeo(MOD), 'fabric').push(axis === 'u' ? mtx(d, s, top, rot) : mtx(s, d, top, rot), cols[k++ % cols.length]);
+    }
+    const t0 = tail > 0 ? a + m * MOD + 0.1 : a - 1.0, t1 = t0 + 0.9;
+    const f0 = fixed + n * 0.05, f1 = fixed + n * 0.85, g0 = fixed + n * 0.25, g1 = fixed + n * 0.65;
+    if (axis === 'u') {
+      b.box('tableWhite', Math.min(f0, f1), t0, top, Math.max(f0, f1), t1, top + 0.3);
+      b.box('tableWhite', Math.min(g0, g1), t0 + 0.2, top + 0.3, Math.max(g0, g1), t1 - 0.2, top + 0.55);
+    } else {
+      b.box('tableWhite', t0, Math.min(f0, f1), top, t1, Math.max(f0, f1), top + 0.3);
+      b.box('tableWhite', t0 + 0.2, Math.min(g0, g1), top + 0.3, t1 - 0.2, Math.max(g0, g1), top + 0.55);
+    }
+  };
+  P.wells.forEach((w, i) => {
+    const [a, c, e, f] = [w[0] - PL, w[1] - PL, w[2] + PL, w[3] + PL];
+    const wu = (a + e) / 2, wv = (c + f) / 2, center = i === P.wells.length - 1;
+    // угловые колодцы: только грани, смотрящие в крест; у края подиума оставляем 1,1 м на подход от ступеней
+    const nu = center ? [-1, 1] : [Math.sign(cu - wu)], nv = center ? [-1, 1] : [Math.sign(cv - wv)];
+    for (const n of nu) {
+      const out = Math.sign(wv - cv) || 1;
+      const s0 = c + (center ? 0.4 : out < 0 ? 1.1 : 0.3), s1 = f - (center ? 0.4 : out > 0 ? 1.1 : 0.3);
+      side('u', n > 0 ? e : a, n, s0, s1, center ? n : out);
+    }
+    for (const n of nv) {
+      const out = Math.sign(wu - cu) || 1;
+      const s0 = a + (center ? 0.4 : out < 0 ? 1.1 : 0.3), s1 = e - (center ? 0.4 : out > 0 ? 1.1 : 0.3);
+      side('v', n > 0 ? f : c, n, s0, s1, center ? -n : out);
+    }
+  });
 }
 function planter(ctx, a, c, e, f, top) {
   const { b, I, R } = ctx;
   if (e - a < 0.2 || f - c < 0.2) return;
-  b.box('tableWhite', a, c, top, e, f, top + 0.75);
-  b.box('planterWood', a + 0.02, c + 0.02, top + 0.75, e - 0.02, f - 0.02, top + 1.0);
+  // деревянный короб ~0,95 м (реечная обшивка, как на панорамах), сверху грунт и зелень
+  b.box('planterWood', a, c, top, e, f, top + 0.93);
+  b.box('tileDark', a + 0.05, c + 0.05, top + 0.93, e - 0.05, f - 0.05, top + 0.95);
   const long = (e - a) > (f - c);
-  const n = Math.max(1, Math.floor((long ? e - a : f - c) / 0.7));
+  // густо, как на фото: куст каждые ~0,45 м, разного размера
+  const n = Math.max(1, Math.floor((long ? e - a : f - c) / 0.45));
   for (let i = 0; i < n; i++) {
-    const pu = long ? a + 0.35 + i * ((e - a - 0.7) / Math.max(1, n - 1)) : (a + e) / 2, pv = long ? (c + f) / 2 : c + 0.35 + i * ((f - c - 0.7) / Math.max(1, n - 1));
-    I('plantL', () => F.plantGeo(0.8), i % 3 ? 'leaf' : 'leafDark').push(mtx(pu, pv, top + 0.85, R() * 6));
+    const t = (i + 0.5) / n;
+    const pu = long ? a + (e - a) * t : (a + e) / 2, pv = long ? (c + f) / 2 : c + (f - c) * t;
+    const k = 1.0 + R() * 0.4;
+    I('plantL', () => F.plantGeo(0.8), 'leaf').push(mtx(pu, pv, top + 0.9, R() * 6, [k, k, k]));
   }
 }
 function turnstiles(ctx, zn) {

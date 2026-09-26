@@ -471,7 +471,7 @@ export function meshFabric() {
 }
 
 // Гирих — синий узор со звёздами (фотозона, стены с орнаментом)
-export function girih({ bg = '#0f2a6b', line = '#3f7fe0', glow = '#8fc3ff', px = 512, meters = [2.4, 2.4] } = {}) {
+export function girih({ bg = '#0f2a6b', line = '#3f7fe0', glow = '#8fc3ff', px = 512, meters = [2.4, 2.4], weight = 1 } = {}) {
   px = P2(px);
   const [c, ctx] = canvas(px, px);
   ctx.fillStyle = bg; ctx.fillRect(0, 0, px, px);
@@ -488,11 +488,11 @@ export function girih({ bg = '#0f2a6b', line = '#3f7fe0', glow = '#8fc3ff', px =
   };
   for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
     const cx = i * cell, cy = j * cell;
-    ctx.lineWidth = 7 * sc; ctx.strokeStyle = line; star(cx, cy, cell * 0.42, cell * 0.3); ctx.stroke();
-    ctx.lineWidth = 2 * sc; ctx.strokeStyle = glow; star(cx, cy, cell * 0.42, cell * 0.3); ctx.stroke();
-    ctx.lineWidth = 4 * sc; ctx.strokeStyle = line; star(cx, cy, cell * 0.2, cell * 0.14); ctx.stroke();
+    ctx.lineWidth = 7 * sc * weight; ctx.strokeStyle = line; star(cx, cy, cell * 0.42, cell * 0.3); ctx.stroke();
+    ctx.lineWidth = 2 * sc * weight; ctx.strokeStyle = glow; star(cx, cy, cell * 0.42, cell * 0.3); ctx.stroke();
+    ctx.lineWidth = 4 * sc * weight; ctx.strokeStyle = line; star(cx, cy, cell * 0.2, cell * 0.14); ctx.stroke();
   }
-  ctx.lineWidth = 4 * sc; ctx.strokeStyle = line;
+  ctx.lineWidth = 4 * sc * weight; ctx.strokeStyle = line;
   for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
     const cx = i * cell + cell / 2, cy = j * cell + cell / 2;
     ctx.beginPath(); ctx.moveTo(cx - cell * 0.18, cy); ctx.lineTo(cx, cy - cell * 0.18); ctx.lineTo(cx + cell * 0.18, cy); ctx.lineTo(cx, cy + cell * 0.18); ctx.closePath(); ctx.stroke();
