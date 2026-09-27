@@ -478,7 +478,7 @@ function runSteps(b, f, s0, s1, q0, q1, za, zb, n, stepKey, soffitKey) {
   // наклонная плита под ступенями
   const mid = (s0 + s1) / 2, qm = (q0 + q1) / 2;
   const A = f.pt(s0, qm), C = f.pt(s1, qm);
-  slopedBox(b, soffitKey, A, C, za - 0.12, zb - 0.12, 0.18, Math.abs(q1 - q0));
+  shearBox(b, soffitKey, A, C, za - 0.3, za - 0.12, zb - 0.3, zb - 0.12, Math.abs(q1 - q0));
   void mid;
 }
 // Наклонная коробка: от точки A (отм. za) до C (отм. zb), толщина по вертикали h, ширина w
@@ -491,6 +491,44 @@ function slopedBox(b, key, A, C, za, zb, h, w, off = 0) {
   g.rotateY(Math.atan2(dv, du));
   const nu = -dv / L, nv = du / L;
   g.translate(sx((A[0] + C[0]) / 2 + nu * off), sy((za + zb) / 2 - h / 2), sz((A[1] + C[1]) / 2 + nv * off));
+  b.add(key, g);
+}
+// Наклонная призма с вертикальными торцами (щёки, поручни, плиты маршей): от точки A
+// (низ zaB, верх zaT) до C (zbB, zbT), толщина w поперёк оси, смещение off влево от A→C.
+// В отличие от повёрнутой коробки торцы не «заваливаются» и чисто сходятся с парапетами.
+function shearBox(b, key, A, C, zaB, zaT, zbB, zbT, w, off = 0) {
+  const du = C[0] - A[0], dv = C[1] - A[1], L = Math.hypot(du, dv);
+  if (L < 0.01) return;
+  const nu = -dv / L, nv = du / L;
+  const V = (P, s, z) => [sx(P[0] + nu * (off + s * w / 2)), sy(z), sz(P[1] + nv * (off + s * w / 2))];
+  const a0 = V(A, -1, zaB), a1 = V(A, -1, zaT), a2 = V(A, 1, zaT), a3 = V(A, 1, zaB);
+  const c0 = V(C, -1, zbB), c1 = V(C, -1, zbT), c2 = V(C, 1, zbT), c3 = V(C, 1, zbB);
+  // грани: [вершины по кругу, как считать UV: 'along' — вдоль марша × высота, 'plan' — вдоль × поперёк, 'end' — поперёк × высота]
+  const faces = [[[a0, a1, a2, a3], 'end'], [[c3, c2, c1, c0], 'end'], [[a0, c0, c1, a1], 'along'], [[a3, a2, c2, c3], 'along'],
+    [[a1, c1, c2, a2], 'plan'], [[a0, a3, c3, c0], 'plan']];
+  const cx = [a0, a2, c0, c2].reduce((m, p) => [m[0] + p[0] / 4, m[1] + p[1] / 4, m[2] + p[2] / 4], [0, 0, 0]);
+  const pos = [], uv = [];
+  const Hs = Math.hypot(L, (zbT - zaT));
+  const uvOf = (p, mode) => {
+    const along = ((p[0] - a0[0]) * du + (-(p[2] - a0[2])) * dv) / L;       // сцена: Z = −v
+    const across = (p[0] - a0[0]) * nu + (-(p[2] - a0[2])) * nv;
+    if (mode === 'end') return [across, p[1]];
+    if (mode === 'plan') return [along * Hs / L, across];
+    return [along * Hs / L, p[1] - along * (zbT - zaT) / L];
+  };
+  for (const [q, mode] of faces) {
+    for (const tri of [[q[0], q[1], q[2]], [q[0], q[2], q[3]]]) {
+      const e1 = tri[1].map((v, i) => v - tri[0][i]), e2 = tri[2].map((v, i) => v - tri[0][i]);
+      const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+      const fc = [0, 1, 2].map((i) => (tri[0][i] + tri[1][i] + tri[2][i]) / 3 - cx[i]);
+      const t = n[0] * fc[0] + n[1] * fc[1] + n[2] * fc[2] < 0 ? [tri[0], tri[2], tri[1]] : tri;
+      for (const p of t) { pos.push(...p); uv.push(...uvOf(p, mode)); }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
   b.add(key, g);
 }
 function liftFronts(ctx, c) {
@@ -524,12 +562,12 @@ function flight(ctx, s) {
   const cheek = s.style === 'mint' ? 'railMint' : 'railLilac';
   const A = at(0, 0), C = at(s.len, 0);
   // плита марша снизу
-  slopedBox(b, soffit, A, C, s.z0 - 0.05, s.z1 - 0.05, 0.24, s.w + 0.3);
-  // сплошные щёки с поручнем
+  shearBox(b, soffit, A, C, s.z0 - 0.29, s.z0 - 0.05, s.z1 - 0.29, s.z1 - 0.05, s.w + 0.3);
+  // сплошные щёки с поручнем: торцы вертикальные, по высоте совпадают с парапетами (+1,05)
   for (const side of [-1, 1]) {
     const off = side * (hw + 0.08);
-    slopedBox(b, cheek, A, C, s.z0 + 1.05, s.z1 + 1.05, 1.5, 0.14, off);
-    slopedBox(b, 'stainless', A, C, s.z0 + 1.1, s.z1 + 1.1, 0.05, 0.06, off);
+    shearBox(b, cheek, A, C, s.z0 - 0.3, s.z0 + 1.05, s.z1 - 0.45, s.z1 + 1.05, 0.14, off);
+    shearBox(b, 'stainless', A, C, s.z0 + 1.05, s.z0 + 1.1, s.z1 + 1.05, s.z1 + 1.1, 0.06, off);
   }
 }
 function landing(ctx, l) {
@@ -537,6 +575,24 @@ function landing(ctx, l) {
   const [u0, v0, u1, v1] = l.rect;
   b.box('concrete', u0, v0, l.z - 0.24, u1, v1, l.z - 0.01);
   b.box('graniteStep', u0, v0, l.z - 0.01, u1, v1, l.z);
+  // ограждение на площадке: перемычка между ближайшими щёками марша «вверх» и марша «дальше»
+  const fl = B.STAIRS.filter((s) => s.level === l.level && s.style !== 'none');
+  const inR = (P) => P[0] > u0 - 0.3 && P[0] < u1 + 0.3 && P[1] > v0 - 0.3 && P[1] < v1 + 0.3;
+  const ends = [];
+  for (const s of fl) {
+    const d = DIRV[s.dir], p = [-d[1], d[0]], hw = s.w / 2 + 0.08;
+    const E = Math.abs(s.z1 - l.z) < 0.01 ? [s.a[0] + d[0] * s.len, s.a[1] + d[1] * s.len] : Math.abs(s.z0 - l.z) < 0.01 ? s.a : null;
+    if (!E || !inR(E)) continue;
+    ends.push({ s, pts: [-1, 1].map((sg) => [E[0] + p[0] * sg * hw, E[1] + p[1] * sg * hw]) });
+  }
+  if (ends.length < 2) return;
+  let best = null;
+  for (const P of ends[0].pts) for (const Q of ends[1].pts) { const dd = Math.hypot(P[0] - Q[0], P[1] - Q[1]); if (!best || dd < best.d) best = { P, Q, d: dd }; }
+  const key = ends[0].s.style === 'mint' ? 'railMint' : 'railLilac';
+  const dir = [(best.Q[0] - best.P[0]) / best.d, (best.Q[1] - best.P[1]) / best.d];
+  const P = [best.P[0] - dir[0] * 0.07, best.P[1] - dir[1] * 0.07], Q = [best.Q[0] + dir[0] * 0.07, best.Q[1] + dir[1] * 0.07];
+  shearBox(b, key, P, Q, l.z - 0.45, l.z + 1.05, l.z - 0.45, l.z + 1.05, 0.14);
+  shearBox(b, 'stainless', P, Q, l.z + 1.05, l.z + 1.1, l.z + 1.05, l.z + 1.1, 0.06);
 }
 
 // ─── Лекторий-амфитеатр (дно атриума) ─────────────────────────────────────
