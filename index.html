@@ -183,6 +183,9 @@
   .hint { position: absolute; left: 50%; top: 76px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; font-size: 13px; z-index: 7; box-shadow: var(--shadow); white-space: nowrap; }
 
   /* Кнопка «Прогулка» в шапке */
+  .partybtn { display: inline-flex; align-items: center; gap: 7px; }
+  .partybtn svg { width: 16px; height: 16px; flex: none; }
+  .partybtn[aria-pressed="true"] { background: linear-gradient(90deg, #ff5fa2, #8f5bff 55%, #2fd0b3); color: #fff; border-color: transparent; }
   .walkbtn { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
   .walkbtn svg { width: 16px; height: 16px; fill: currentColor; flex: none; }
   .walkbtn:hover { filter: brightness(1.07); }
@@ -327,6 +330,7 @@
       <button id="t-eve" aria-pressed="false">Вечер</button>
       <button id="t-night" aria-pressed="false">Ночь</button>
     </div>
+    <button class="iconbtn partybtn" id="b-party" aria-pressed="false" title="Праздник: С днём рождения, School 21!"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 14.2 5.3 5.1l5.6 5.6z" fill="currentColor"/><path d="M9.2 1.6v1.8M12.6 3.4l-1.3 1.3M14.4 6.8h-1.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="11.9" cy="8.9" r="0.9" fill="currentColor"/><circle cx="7.2" cy="3.2" r="0.9" fill="currentColor"/></svg><span>Праздник</span></button>
     <button class="iconbtn walkbtn" id="b-walk" title="Прогулка от первого лица"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="9" cy="2.6" r="1.6"/><path d="M8.2 5.2 5.6 6.6 4.6 9.2M8.2 5.2l-.9 4.4 2.6 2.2.8 3.2M7.3 9.6 6 12.4l-2.4 2.4M8.2 5.2l1.9 2.5 2.6.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Прогулка</button>
     <button class="iconbtn" id="b-conf" aria-pressed="false"><span class="full">Достоверность</span><span class="short">Точность</span></button>
     <button class="iconbtn" id="b-edit" aria-pressed="false">Редактор</button>

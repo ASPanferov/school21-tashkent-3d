@@ -20,6 +20,7 @@ import { buildSite } from './build/site.js';
 import { P, sx, sy, sz } from './lib/geom.js';
 import { renderPlan } from './ui/plan.js';
 import { renderSite } from './ui/sitemap.js';
+import { buildParty } from './build/party.js';
 import { createWalk } from './lib/walk.js';
 
 const $ = (id) => document.getElementById(id);
@@ -36,7 +37,8 @@ try {
 } catch { /* хранилище недоступно — работаем с исходными данными */ }
 const saveZones = () => { try { localStorage.setItem(STORE, JSON.stringify(ZONES)); } catch { /* ignore */ } };
 
-const state = { view: '3d', cut: null, time: 'day', conf: false, edit: false, walk: false, selected: null, preset: 'front' };
+const state = { view: '3d', cut: null, time: 'day', conf: false, edit: false, walk: false, selected: null, preset: 'front', party: false };
+let party = null;             // праздничное убранство (строится при первом включении режима)
 
 // ── Рендерер и сцена ────────────────────────────────────────────────────────
 // Уровень качества: high — десктоп (MSAA ×4, GTAO, тени 4096 мягкие, полная детализация),
@@ -414,6 +416,7 @@ function applyCut(cut) {
     if (!m.userData.level || !/^glass/.test(m.name)) continue;
     m.opacity = topBand && m.userData.level === topBand ? 0.3 : m.userData.baseOpacity;
   }
+  party?.setCut(cut);
   updateDetailVisibility();
   renderer.shadowMap.needsUpdate = true;
   updateLabels();
@@ -483,6 +486,7 @@ const PRESETS = [
   { id: 'cut2', name: 'Разрез 2 этажа', pos: [27.6, -38, 58], tgt: [27.6, 27.6, 4.5], cut: 'L2' },
   { id: 'cut1', name: 'Разрез 1 этажа', pos: [70, -36, 46], tgt: [27.6, 24, 0], cut: 'M' },
   { id: 'walk', name: 'Прогулка', walk: true },
+  { id: 'party', name: 'Праздник', pos: [80, -44, 27], tgt: [25, 24, 11], cut: null, hidden: true },
 ];
 
 let tween = null;
@@ -501,7 +505,7 @@ function fitCamera(id, instant = false) {
   stopWalk();
   applyCut(p.cut);
   const to = { pos: P(...p.pos), tgt: P(...p.tgt) };
-  if (instant) { camera.position.copy(to.pos); controls.target.copy(to.tgt); controls.update(); }
+  if (instant) { tween = null; camera.position.copy(to.pos); controls.target.copy(to.tgt); controls.update(); }
   else tween = { t: 0, from: { pos: camera.position.clone(), tgt: controls.target.clone() }, to };
   controls.minDistance = p.inside ? 0.3 : 1.5;
   renderPresets();
@@ -783,7 +787,7 @@ function renderRail() {
 }
 function renderPresets() {
   const el = $('presets');
-  el.innerHTML = '<span class="cap">Ракурсы</span>' + PRESETS.map((p) => `<button data-p="${p.id}" aria-pressed="${state.walk ? p.id === 'walk' : state.preset === p.id}">${esc(p.name)}</button>`).join('');
+  el.innerHTML = '<span class="cap">Ракурсы</span>' + PRESETS.filter((p) => !p.hidden).map((p) => `<button data-p="${p.id}" aria-pressed="${state.walk ? p.id === 'walk' : state.preset === p.id}">${esc(p.name)}</button>`).join('');
   el.querySelectorAll('button').forEach((b) => b.onclick = () => { setView('3d'); fitCamera(b.dataset.p); });
 }
 
@@ -813,6 +817,23 @@ $('v-site').onclick = () => setView('site');
 $('t-day').onclick = () => applyTime('day');
 $('t-eve').onclick = () => applyTime('eve');
 $('t-night').onclick = () => applyTime('night');
+// ── Праздник: «С днём рождения, School 21!» ─────────────────────────────────
+function setParty(on) {
+  state.party = on;
+  $('b-party').setAttribute('aria-pressed', String(on));
+  if (on && !party) {
+    party = buildParty({ hq: HQ });
+    scene.add(party.group);
+  }
+  if (party) { party.group.visible = on; party.setCut(state.cut); }
+  if (on) {
+    if (state.view !== '3d') setView('3d');
+    if (state.time === 'day') applyTime('eve');
+    if (!state.walk) fitCamera('party');
+  }
+  renderer.shadowMap.needsUpdate = true;
+}
+$('b-party').onclick = () => setParty(!state.party);
 $('b-conf').onclick = () => {
   state.conf = !state.conf;
   $('b-conf').setAttribute('aria-pressed', String(state.conf));
@@ -860,6 +881,7 @@ function frame() {
     if (tween.t >= 1) tween = null;
   }
   if (state.walk) walk.update(dt); else controls.update();
+  if (state.party && party) party.update(dt);
   sky.position.copy(camera.position);
   if (performance.now() - lastDetailCheck > 300) { lastDetailCheck = performance.now(); updateDetailVisibility(); }
   // тень следует за камерой, когда она внутри/рядом
@@ -890,7 +912,11 @@ addEventListener('resize', onResize);
 
 renderRail();
 renderPresets();
-build().then(() => requestAnimationFrame(frame)).catch((e) => {
+build().then(() => {
+  // праздничная версия по ссылке: ?party или #party
+  if (/[?&]party\b/.test(location.search) || location.hash === '#party') setParty(true);
+  requestAnimationFrame(frame);
+}).catch((e) => {
   console.error(e);
   loadmsg('Не удалось собрать модель: ' + e.message);
 });

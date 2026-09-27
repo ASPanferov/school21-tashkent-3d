@@ -570,6 +570,7 @@ export function createWalk(ctx) {
       mapKey = `${here.level || 'out'}|${mapCss}|${mapDpr}|${frame === MAP_IN}`;
     }
     const g = mapCtx;
+    if (!g) return;                       // панель скрыта: у мини-карты ещё нет контекста
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, el.map.width, el.map.height);
     g.drawImage(mapLayer, 0, 0);

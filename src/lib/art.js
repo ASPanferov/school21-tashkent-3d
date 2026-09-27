@@ -529,3 +529,72 @@ export function pomegranateMural() {
   spots.forEach(([x, y, R], i) => pomegranate(ctx, x, y, R, cols[i % cols.length], r));
   return tex(c);
 }
+
+// ── Праздник: «С днём рождения, School 21!» ────────────────────────────────
+// Атлас текстуры ленты: красный атлас с золотыми кромками (u — поперёк, v — вдоль)
+export function ribbonTexture() {
+  const W = 128, H = 256;
+  const [c, ctx] = canvas(W, H);
+  const g = ctx.createLinearGradient(0, 0, W, 0);
+  g.addColorStop(0, '#9e0a16'); g.addColorStop(0.3, '#e0202c'); g.addColorStop(0.5, '#f0404a'); g.addColorStop(0.7, '#e0202c'); g.addColorStop(1, '#9e0a16');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  for (const x of [6, W - 14]) {
+    const gg = ctx.createLinearGradient(x, 0, x + 8, 0);
+    gg.addColorStop(0, '#c9921e'); gg.addColorStop(0.5, '#ffe08a'); gg.addColorStop(1, '#c9921e');
+    ctx.fillStyle = gg; ctx.fillRect(x, 0, 8, H);
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+  for (let y = 0; y < H; y += 3) { ctx.beginPath(); ctx.moveTo(16, y); ctx.lineTo(W - 16, y + 1); ctx.stroke(); }
+  const t = tex(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+// Мягкая круглая «искра» для частиц фейерверка
+export function sparkSprite() {
+  const [c, ctx] = canvas(64, 64);
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,255,255,0.85)'); g.addColorStop(0.6, 'rgba(255,255,255,0.18)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+  const t = tex(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+// Баннер: две строки (фасад) или одна строка (атриум)
+export function birthdayBanner({ oneLine = false } = {}) {
+  const W = 2048, H = oneLine ? 220 : 512;
+  const [c, ctx] = canvas(W, H);
+  const r = rng(2024);
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#171c55'); g.addColorStop(0.55, '#3a2a9a'); g.addColorStop(1, '#6b2fd6');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const cols = ['#2fd0b3', '#ffd34d', '#ff5fa2', '#7fb6ff', '#ffffff', '#ff8a3d'];
+  for (let i = 0; i < (oneLine ? 160 : 320); i++) {
+    ctx.save(); ctx.translate(r() * W, r() * H); ctx.rotate(r() * 6.28);
+    ctx.fillStyle = cols[Math.floor(r() * cols.length)]; ctx.globalAlpha = 0.35 + r() * 0.5;
+    if (r() < 0.5) ctx.fillRect(-6, -3, 12, 6); else { ctx.beginPath(); ctx.arc(0, 0, 4 + r() * 4, 0, 6.28); ctx.fill(); }
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  // знак «21» слева
+  const m = oneLine ? 150 : 330, mx = oneLine ? 40 : 70, my = (H - m) / 2;
+  ctx.fillStyle = '#2fd0b3'; rr(ctx, mx, my, m, m, m * 0.18); ctx.fill();
+  ctx.fillStyle = '#10163a'; ctx.font = `700 ${Math.round(m * 0.62)}px "Unbounded", "Onest", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('21', mx + m / 2, my + m * 0.53);
+  const tx = mx + m + (oneLine ? 50 : 80), tw = W - tx - 50;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  const fit = (txt, size, weight) => { let s = size; ctx.font = `${weight} ${s}px "Unbounded", "Onest", sans-serif`; while (ctx.measureText(txt).width > tw && s > 20) { s -= 4; ctx.font = `${weight} ${s}px "Unbounded", "Onest", sans-serif`; } return s; };
+  if (oneLine) {
+    const t = 'С ДНЁМ РОЖДЕНИЯ, SCHOOL 21!';
+    const s = fit(t, 120, 700);
+    ctx.fillStyle = '#ffffff'; ctx.fillText(t, tx, H / 2 + s * 0.36);
+  } else {
+    const t1 = 'С ДНЁМ РОЖДЕНИЯ,', t2 = 'SCHOOL 21!';
+    const s1 = fit(t1, 170, 700);
+    ctx.fillStyle = '#ffffff'; ctx.fillText(t1, tx, H * 0.44);
+    const s2 = fit(t2, 210, 700);
+    ctx.fillStyle = '#2fd0b3'; ctx.fillText(t2, tx, H * 0.44 + s2 * 1.02);
+    void s1;
+  }
+  // золотая окантовка
+  ctx.strokeStyle = '#ffd34d'; ctx.lineWidth = oneLine ? 8 : 14; ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, W - ctx.lineWidth, H - ctx.lineWidth);
+  return tex(c);
+}
