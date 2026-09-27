@@ -8,6 +8,7 @@
 //   светильниками (main.js → tuneEnv) — поэтому внутри светло и ровно, как на фото, и ночью тоже.
 import * as THREE from 'three';
 import * as T from './textures.js';
+import * as ART from './art.js';
 import { CLUSTER_COLORS } from '../data/building.js';
 
 const std = (o) => new THREE.MeshStandardMaterial(o);
@@ -176,8 +177,12 @@ function specs() {
     leafDark: () => vc(std({ color: 0x356a38, roughness: 0.7, side: THREE.DoubleSide })),
     tableOrange: () => std({ color: 0xe8792c, roughness: 0.4 }),
     tableWhite: () => std({ color: 0xf4f4f2, roughness: 0.4 }),
-    easelWood: () => std({ color: 0xc9a067, roughness: 0.6 }),
-    marble: () => std({ color: 0xefece6, roughness: 0.35 }),
+    easelWood: () => vc(std({ color: 0xe2b466, roughness: 0.55 })),
+    nylon: () => vc(std({ color: 0xffffff, roughness: 0.42 })),
+    rollup: () => std({ map: ART.rollupBanner(), roughness: 0.5 }),
+    lobbyScreen: () => { const t = ART.lobbyScreen(); return std({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.85, roughness: 0.25 }); },
+    faceScreen: () => std({ color: 0x0b1a2a, emissive: 0x7fd4ff, emissiveIntensity: 0.9, roughness: 0.2 }),
+    marble: () => std({ color: 0xf1eee8, roughness: 0.55 }),
     pingpong: () => std({ color: 0x1d5aa8, roughness: 0.5 }),
     tier: () => std({ color: 0x3a3a3a, roughness: 0.95, normalMap: weaveN().userData.normalMap, normalScale: new THREE.Vector2(0.5, 0.5) }),
     cushion: () => std({ color: 0x6b6d71, roughness: 1.0, normalMap: weaveN().userData.normalMap, normalScale: new THREE.Vector2(0.5, 0.5) }),
@@ -188,6 +193,7 @@ function specs() {
     serverGlass: () => phys({ color: 0x3b8cff, emissive: 0x1450c8, emissiveIntensity: 0.6, transparent: true, opacity: 0.35, roughness: 0.05, depthWrite: false }),
     girih: () => std({ map: T.girih(), emissive: 0xffffff, emissiveMap: T.girih(), emissiveIntensity: 0.25, roughness: 0.6 }),
     ceramicMural: () => std({ map: T.ceramicMural(), roughness: 0.8 }),
+    kitchenMural: () => std({ map: ART.pomegranateMural(), roughness: 0.75 }),
     pixelMural: () => std({ map: T.pixelRain(), emissive: 0xffffff, emissiveMap: T.pixelRain(), emissiveIntensity: 0.35, roughness: 0.7 }),
     slide: () => std({ map: T.slide(), emissive: 0xffffff, emissiveMap: T.slide(), emissiveIntensity: 0.9, roughness: 0.3 }),
     tvScreen: () => std({ color: 0x111111, emissive: 0x2a5ea8, emissiveIntensity: 0.9, roughness: 0.2 }),
@@ -271,7 +277,10 @@ export class Materials {
     } else if (base.startsWith('tint:')) {
       m = std({ color: new THREE.Color(base.slice(5)), roughness: 0.8 });
     } else if (base.startsWith('portrait:')) {
-      m = std({ map: T.portraitPanel(+base.slice(9)), roughness: 0.6 });
+      // стенд — печать под акрилом: глянец
+      m = std({ map: ART.scholarPanel(+base.slice(9)), roughness: 0.2, envMapIntensity: 0.7 });
+    } else if (base.startsWith('canvasPhoto:')) {
+      m = std({ map: ART.eventPhoto(+base.slice(12)), roughness: 0.72 });
     } else if (this.specs[base]) {
       m = this.specs[base]();
     }

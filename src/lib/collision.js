@@ -20,7 +20,7 @@ async function loadBVH() {
 const SKIP_MAT = /^(led|ledCool|ledWarm|skyGlass|glassDoor)$/;
 const SKIP_NODE = /^(pick:|lights-|skylight-cables|skylight-rings|confidence-overlay)|^sky$/;
 // инстансы-мелочь: стулья, мониторы, растения, створки турникетов, кроны деревьев…
-const SKIP_INST = /(^|:)(chair|pchair|monitor|screen|keyboard|print|plant|plantL|turnGlass|lavender)$|^(tree-crown|car-glass|car-wheels)/;
+const SKIP_INST = /(^|:)(chair|pchair|monitor|screen|keyboard|print|plant|plantL|plantB|palm|turnGlass|lavender|faceScreen|rollupPrint)$|^(tree-crown|car-glass|car-wheels)/;
 const PROXY_TRIS = 48;                  // инстанс тяжелее — коллизия по габаритной коробке
 
 const matName = (m) => (m?.name || '').split('@')[0];

@@ -52,6 +52,45 @@ function bevelBox(w, h, d, b = 0.02) {
   return g;
 }
 const bbox = (w, h, d, x, y, z, b) => bevelBox(w, h, d, b).translate(x, y, z);
+// Брусок сечением tx × tz от точки a до точки b ([x, y, z])
+function stick(a, b, tx, tz = tx) {
+  const d = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+  const L = d.length();
+  const g = new THREE.BoxGeometry(tx, L, tz);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
+  return g.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
+}
+// Цилиндр (конус) от a до b
+function tube(a, b, r0, r1 = r0, seg = 10) {
+  const d = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+  const L = d.length();
+  const g = new THREE.CylinderGeometry(r1, r0, L, seg);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
+  return g.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
+}
+// Тело вращения по профилю [[y, r], …] со складками: fold(y) — относительная амплитуда, nf — число складок
+function revolve(prof, seg, { sx = 1, sz = 1, fold = () => 0, nf = 9 } = {}) {
+  const pos = [], idx = [];
+  for (const [y, r0] of prof) {
+    for (let i = 0; i <= seg; i++) {
+      const a = (i / seg) * Math.PI * 2;
+      const r = r0 * (1 + fold(y) * Math.sin(a * nf + y * 2.3));
+      pos.push(Math.sin(a) * r * sx, y, Math.cos(a) * r * sz);
+    }
+  }
+  for (let j = 0; j < prof.length - 1; j++) for (let i = 0; i < seg; i++) {
+    const a = j * (seg + 1) + i, b = a + seg + 1;
+    idx.push(a, a + 1, b, b, a + 1, b + 1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  // нормали наружу: проверяем по одной вершине
+  const n = g.attributes.normal, p = g.attributes.position, k = seg + 1 + Math.floor(seg / 4);
+  if (n.getX(k) * p.getX(k) + n.getZ(k) * p.getZ(k) < 0) { const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } g.computeVertexNormals(); }
+  return g;
+}
 // Плоская «звезда» крестовины кресла
 function starBase(r = 0.3, arms = 5, t = 0.028) {
   const s = new THREE.Shape();
@@ -111,7 +150,12 @@ export function chairGeo() {
 // Белый пластиковый стул-кресло (кухни, конференц-зал): оболочка + ножки
 export function plasticChairGeo() {
   const SHELL = 0xf2f2f0, LEG = 0x5a5d61;
-  if (!hi()) return merge([part(box(0.46, 0.05, 0.44, 0, 0.45, 0), SHELL), part(box(0.44, 0.42, 0.04, 0, 0.7, 0.21), SHELL), part(box(0.4, 0.45, 0.36, 0, 0.225, 0).scale(1, 1, 1), LEG)]);
+  if (!hi()) {
+    // упрощённый: оболочка и четыре ножки (без сплошного блока)
+    const P = [part(box(0.46, 0.05, 0.44, 0, 0.45, 0), SHELL), part(box(0.44, 0.38, 0.04, 0, 0.68, 0.21), SHELL)];
+    for (const [x, z] of [[-0.19, -0.18], [0.19, -0.18], [-0.19, 0.18], [0.19, 0.18]]) P.push(part(box(0.03, 0.43, 0.03, x, 0.215, z), LEG));
+    return merge(P);
+  }
   const parts = [];
   parts.push(part(bbox(0.46, 0.045, 0.44, 0, 0.45, 0, 0.018), SHELL));
   const back = bbox(0.44, 0.36, 0.035, 0, 0.0, 0, 0.012);
@@ -151,23 +195,28 @@ export function screenGeo() {
 // ── Мягкая мебель ───────────────────────────────────────────────────────────
 // Кресло-мешок: «груша» со спинкой и вмятиной сиденья
 export function beanbagGeo() {
-  const g = new THREE.SphereGeometry(0.5, hi() ? 16 : 10, hi() ? 11 : 7);
-  g.scale(1, 0.62, 1.1);
-  g.translate(0, 0.28, 0);
-  const pos = g.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const y = pos.getY(i), x = pos.getX(i), z = pos.getZ(i);
-    if (y < 0.05) pos.setY(i, 0.05 * (y + 0.1) / 0.15);
-    // спинка выше, сиденье продавлено
-    if (z > 0.1 && y > 0.3) pos.setY(i, y + 0.12 * Math.min(1, (z - 0.1) / 0.4));
-    if (y > 0.35 && z < 0.1) pos.setY(i, y - 0.13 * (1 - Math.min(1, Math.hypot(x, z + 0.1) / 0.45)));
+  const g = new THREE.SphereGeometry(0.42, hi() ? 24 : 12, hi() ? 18 : 9);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const t = (y + 0.42) / 0.84;                          // 0 — низ, 1 — макушка
+    const k = 1.2 - 0.5 * t;                              // груша: низ шире
+    x *= k; z *= k;
+    z += 0.16 * t * t;                                    // верх завален назад
+    y *= 0.82;
+    if (y < -0.26) y = -0.26 + (y + 0.26) * 0.12;         // приплюснутое дно
+    const d = Math.hypot(x, z + 0.05);
+    if (t > 0.4 && z < 0.12) y -= 0.11 * Math.exp(-(d * d) / 0.045);   // вмятина сиденья
+    y += 0.012 * Math.sin(x * 23) * Math.sin(z * 19);     // складки ткани
+    p.setXYZ(i, x, y + 0.27, z);
   }
   g.computeVertexNormals();
-  const p = part(g, 0xffffff);
-  // затемнение к низу (контактная тень)
-  const col = p.attributes.color, pp = p.attributes.position;
-  for (let i = 0; i < pp.count; i++) { const k = 0.72 + 0.28 * Math.min(1, pp.getY(i) / 0.3); col.setXYZ(i, col.getX(i) * k, col.getY(i) * k, col.getZ(i) * k); }
-  return p;
+  const parts = [part(g)];
+  if (hi()) parts.push(part(new THREE.SphereGeometry(0.045, 8, 6).scale(1, 0.7, 1).translate(0, 0.62, 0.2), 0xe6e6e6));   // собранная макушка
+  const out = merge(parts);
+  const col = out.attributes.color, pp = out.attributes.position;
+  for (let i = 0; i < pp.count; i++) { const kk = 0.7 + 0.3 * Math.min(1, pp.getY(i) / 0.3); col.setXYZ(i, col.getX(i) * kk, col.getY(i) * kk, col.getZ(i) * kk); }
+  return out;
 }
 
 // Шестигранный пуф (с кантом)
@@ -283,17 +332,45 @@ export function lavenderGeo() {
 }
 
 // ── Прочее ──────────────────────────────────────────────────────────────────
-// Мольберт с фотографией
+// Студийный мольберт из светлой сосны (холл, фойе): две передние ноги, мачта с верхним
+// зажимом, полка с бортиком, задняя нога. Холст ставится на полку, смотрит в −Z.
 export function easelGeo() {
-  const legs = [];
-  for (const x of [-0.3, 0.3]) {
-    const l = box(0.04, 1.7, 0.04);
-    l.rotateX(-0.12); l.translate(x, 0.84, 0.05);
-    legs.push(l);
+  const t = 0.036, P = [];
+  for (const sg of [-1, 1]) P.push(stick([sg * 0.34, 0, -0.075], [sg * 0.075, 1.63, -0.005], t));
+  P.push(stick([0, 0.46, -0.04], [0, 2.02, 0.012], 0.042, 0.046));       // мачта
+  P.push(stick([-0.31, 0.5, -0.064], [0.31, 0.5, -0.064], 0.05, 0.03));   // нижняя перекладина
+  P.push(stick([-0.12, 1.52, -0.012], [0.12, 1.52, -0.012], 0.04, 0.028));
+  P.push(stick([0, 1.54, 0.03], [0, 0, 0.66], 0.034));                   // задняя нога
+  P.push(stick([0, 0.53, -0.02], [0, 0.53, 0.43], 0.026));               // распорка
+  P.push(box(0.76, 0.026, 0.09, 0, 0.787, -0.088));                     // полка
+  P.push(box(0.76, 0.042, 0.014, 0, 0.805, -0.133));                    // бортик
+  P.push(box(0.07, 0.13, 0.05, 0, 0.73, -0.052));                       // кронштейн полки
+  P.push(box(0.13, 0.05, 0.08, 0, 1.55, -0.07));                        // верхний зажим
+  P.push(box(0.13, 0.03, 0.014, 0, 1.535, -0.113));
+  if (hi()) P.push(cyl(0.016, 0.016, 0.05, 0.09, 1.55, -0.06, 8).rotateZ(0), cyl(0.016, 0.016, 0.05, 0.075, 0.73, -0.05, 8));
+  const tones = [0xffffff, 0xf4efe6, 0xece4d6];
+  return merge(P.map((g, i) => part(g, tones[i % 3])));
+}
+// Фото-холст на подрамнике (0,9 × 0,7 × 0,035): фото на лицевой стороне, по торцам — «натяжка»
+// краёв снимка. Координаты — как у мольберта: стоит на полке, слегка откинут назад.
+export function canvasGeo(w = 0.9, h = 0.7, d = 0.035) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  const uv = g.attributes.uv, pos = g.attributes.position, m = 0.035;
+  for (let i = 0; i < uv.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const face = Math.floor(i / 4), wz = (z + d / 2) / d;   // 0 — лицевая кромка, 1 — задняя
+    let u = 0.5 - x / w, v = 0.5 + y / h;
+    if (face === 0) u = wz * m;
+    else if (face === 1) u = 1 - wz * m;
+    else if (face === 2) v = 1 - wz * m;
+    else if (face === 3) v = wz * m;
+    else if (face === 4) { u = 0.5; v = 0.02; }
+    uv.setXY(i, u, v);
   }
-  const back = box(0.04, 1.6, 0.04); back.rotateX(0.3); back.translate(0, 0.78, 0.3);
-  legs.push(back, box(0.7, 0.04, 0.06, 0, 0.72, 0.0), box(0.66, 0.03, 0.03, 0, 1.42, -0.1));
-  return merge(legs.map((g) => part(g)));
+  g.translate(0, h / 2, 0);
+  g.rotateX(0.035);
+  g.translate(0, 0.813, -0.103);
+  return part(g);
 }
 export function printGeo() { const g = box(0.8, 0.6, 0.02); g.rotateX(-0.12); g.translate(0, 1.08, -0.02); return part(g); }
 
@@ -343,19 +420,106 @@ export function stripGeo(ax, az, bx, bz, y, w = 0.05) {
   return part(g);
 }
 
-// Стилизованная статуя учёного в халате (выставочная зона)
+// Статуя учёного (парящая площадка): высокая стройная фигура в халате до пола, руки
+// сложены на книге, борода, чалма; низкий квадратный постамент. Смотрит в −Z.
 export function statueGeo() {
+  const seg = hi() ? 40 : 18, B = 0.07;
+  const prof = [[0, 0.34], [0.04, 0.35], [0.12, 0.31], [0.35, 0.275], [0.7, 0.255], [1.0, 0.24], [1.25, 0.232], [1.45, 0.238],
+    [1.6, 0.242], [1.7, 0.228], [1.78, 0.19], [1.84, 0.12], [1.88, 0.075]].map(([y, r]) => [y + B, r]);
+  const robe = revolve(prof, seg, { sx: 1.12, sz: 0.8, fold: (y) => 0.07 * Math.max(0, 1 - (y - B) / 1.35), nf: 11 });
   const parts = [
-    bbox(0.9, 0.5, 0.9, 0, 0.25, 0, 0.03),                              // постамент
-    cyl(0.28, 0.44, 1.5, 0, 1.25, 0, 18),                               // халат
-    cyl(0.2, 0.28, 0.35, 0, 2.15, 0, 16),                               // плечи
-    new THREE.SphereGeometry(0.14, 16, 12).translate(0, 2.45, 0),       // голова
-    cyl(0.17, 0.15, 0.13, 0, 2.6, 0, 16),                               // чалма
-    new THREE.SphereGeometry(0.16, 12, 8).scale(1, 0.55, 1).translate(0, 2.68, 0),
-    box(0.12, 0.6, 0.12, 0.22, 1.85, -0.12).rotateZ(0.1),               // рука со свитком
-    cyl(0.05, 0.05, 0.4, 0.2, 1.62, -0.25, 8),
+    bbox(0.64, B, 0.64, 0, B / 2, 0, 0.012),                                          // постамент
+    robe,
+    tube([0, 1.86 + B, 0.0], [0, 1.95 + B, -0.01], 0.058, 0.05, 12),                 // шея
+    new THREE.SphereGeometry(0.1, 20, 16).scale(1, 1.2, 1.08).translate(0, 2.02 + B, -0.015),      // голова
+    new THREE.ConeGeometry(0.078, 0.24, 12).rotateX(Math.PI).translate(0, 1.87 + B, -0.075),       // борода
+    new THREE.TorusGeometry(0.098, 0.046, 10, 24).rotateX(Math.PI / 2).translate(0, 2.13 + B, -0.01),   // чалма
+    new THREE.TorusGeometry(0.084, 0.04, 10, 24).rotateX(Math.PI / 2 + 0.12).translate(0, 2.18 + B, 0.0),
+    new THREE.SphereGeometry(0.098, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.9, 1).translate(0, 2.19 + B, 0.005),
   ];
+  // руки в широких рукавах сложены на книге
+  for (const sg of [-1, 1]) {
+    parts.push(tube([sg * 0.235, 1.74 + B, 0.0], [sg * 0.215, 1.38 + B, -0.06], 0.062, 0.07, 12));
+    parts.push(tube([sg * 0.21, 1.4 + B, -0.06], [sg * 0.06, 1.33 + B, -0.21], 0.068, 0.078, 12));
+  }
+  parts.push(new THREE.SphereGeometry(0.052, 12, 10).scale(1.5, 0.8, 1).translate(0, 1.345 + B, -0.235));   // кисти
+  parts.push(bevelBox(0.24, 0.035, 0.17, 0.006).rotateX(0.25).translate(0, 1.3 + B, -0.215));                  // книга
   return merge(parts.map((g) => part(g)));
+}
+
+// Островной диван холла: вытянутый шестигранник из серого велюра со спинкой посередине,
+// сидеть можно с двух сторон (панорама холла у окон СВ фасада)
+function hexShape(L, W, c = W * 0.45) {
+  const s = new THREE.Shape();
+  s.moveTo(-L / 2, 0); s.lineTo(-L / 2 + c, -W / 2); s.lineTo(L / 2 - c, -W / 2); s.lineTo(L / 2, 0); s.lineTo(L / 2 - c, W / 2); s.lineTo(-L / 2 + c, W / 2); s.closePath();
+  return s;
+}
+function slab(shape, h, bevel = 0) {
+  const g = new THREE.ExtrudeGeometry(shape, { depth: Math.max(0.001, h - bevel * 2), bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: hi() ? 3 : 1, curveSegments: 4 });
+  g.rotateX(-Math.PI / 2);
+  return g.translate(0, bevel, 0);
+}
+export function islandSofaGeo(len = 2.6, w = 1.05) {
+  return merge([
+    part(slab(hexShape(len - 0.12, w - 0.12), 0.07), 0x2e2e2e),
+    part(slab(hexShape(len, w), 0.34, 0.035).translate(0, 0.07, 0)),
+    part(slab(hexShape(len - 1.0, 0.34, 0.14), 0.4, 0.035).translate(0, 0.41, 0), 0xf2f2f2),
+  ]);
+}
+// Кубический пуф из велюра
+export function cubePoufGeo() {
+  return merge([part(box(0.4, 0.05, 0.4, 0, 0.025, 0), 0x2a2a2a), part(bbox(0.46, 0.4, 0.46, 0, 0.25, 0, 0.045))]);
+}
+// Терминал Face ID на стойке турникета: стойка, корпус планшета (экран — faceScreenGeo)
+export function faceIdGeo() {
+  const scr = bbox(0.17, 0.27, 0.035, 0, 0, 0, 0.012); scr.rotateX(-0.2); scr.translate(0, 0.5, -0.02);
+  return merge([part(cyl(0.017, 0.02, 0.4, 0, 0.2, 0, 10), 0xd9d9d9), part(scr, 0x1a1a1a), part(cyl(0.05, 0.05, 0.015, 0, 0.008, 0, 14), 0x2a2a2a)]);
+}
+export function faceScreenGeo() {
+  const g = new THREE.PlaneGeometry(0.13, 0.21); g.rotateY(Math.PI); g.rotateX(-0.2); g.translate(0, 0.5, -0.04);
+  return part(g);
+}
+// Ролл-ап баннер: алюминиевая кассета, стойка, планка; печать — rollupPrintGeo
+export function rollupGeo() {
+  return merge([part(bbox(0.88, 0.085, 0.22, 0, 0.0425, 0, 0.02), 0xc9ccd0), part(cyl(0.011, 0.011, 2.05, 0, 1.08, 0.04, 8), 0x9a9da2), part(box(0.86, 0.025, 0.025, 0, 2.1, 0.0), 0xc9ccd0)]);
+}
+export function rollupPrintGeo() {
+  const g = new THREE.PlaneGeometry(0.84, 2.0); g.rotateY(Math.PI); g.translate(0, 1.09, -0.014);
+  return part(g);
+}
+// Арековая пальма (площадка, лобби): пучок дугообразных вай с парными листочками
+export function palmGeo(h = 1.7) {
+  const R = rng(Math.round(h * 100) + 17);
+  const parts = [];
+  const nFr = hi() ? 13 : 6, nLeaf = hi() ? 22 : 9;
+  const greens = [0x6fae4a, 0x7cbf55, 0x5d9e3f, 0x86c65c];
+  const up = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
+  for (let f = 0; f < nFr; f++) {
+    const az = (f / nFr) * Math.PI * 2 + R() * 0.6;
+    const tilt = 0.12 + R() * 0.5, L = h * (0.7 + R() * 0.35);
+    const pts = [new THREE.Vector3(0, 0, 0)];
+    for (let i = 1; i <= 8; i++) {
+      const t = i / 8, ang = tilt + t * t * (0.9 + R() * 0.3);
+      const d = new THREE.Vector3(Math.cos(az) * Math.sin(ang), Math.cos(ang), Math.sin(az) * Math.sin(ang)).multiplyScalar(L / 8);
+      pts.push(pts[i - 1].clone().add(d));
+    }
+    for (let i = 0; i < 8; i++) parts.push(part(tube(pts[i].toArray(), pts[i + 1].toArray(), 0.012 - i * 0.001, 0.011 - i * 0.001, 5), 0x6b7f3a));
+    for (let j = 0; j < nLeaf; j++) {
+      const t = 0.22 + (j / nLeaf) * 0.76, fi = t * 8, i0 = Math.min(7, Math.floor(fi));
+      const P = pts[i0].clone().lerp(pts[i0 + 1], fi - i0);
+      const T = pts[i0 + 1].clone().sub(pts[i0]).normalize();
+      const S = new THREE.Vector3().crossVectors(T, up).normalize();
+      for (const sd of [-1, 1]) {
+        const D = S.clone().multiplyScalar(sd).addScaledVector(T, 0.8).addScaledVector(up, -0.35).normalize();
+        const len = h * (0.3 - 0.14 * t) * (0.85 + R() * 0.3);
+        const lf = leafStrip(len, len * 0.16, 0.35, hi() ? 3 : 2);
+        lf.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(Z, D));
+        lf.translate(P.x, P.y, P.z);
+        parts.push(part(lf, greens[Math.floor(R() * greens.length)]));
+      }
+    }
+  }
+  return merge(parts);
 }
 
 // Турникет (скоростной проход): тумбы из нержавейки + стеклянные створки, стойка Face ID

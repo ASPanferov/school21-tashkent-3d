@@ -11,6 +11,7 @@ export function setMaxAniso(a) { MAX_ANISO = a; }
 // Детальность процедурных карт: 1 — полная, 0.5 — телефоны (вдвое меньше пикселей)
 let DETAIL = 1;
 export function setTextureDetail(k) { DETAIL = k; }
+export const textureDetail = () => DETAIL;
 const P2 = (px) => Math.max(64, Math.round(px * DETAIL));
 
 function canvas(w, h) {

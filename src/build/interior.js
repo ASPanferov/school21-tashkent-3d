@@ -278,8 +278,10 @@ function columns(ctx) {
       continue;
     }
     const porch = PORCH && L.id === 'L1' && inRect(u, v, PORCH, 0.4);
-    b.box('columnWhite', u - h, v - h, L.z, u + h, v + h, L.top - (porch ? 0.07 : 0.7));
-    if (!porch) cb.box('ceilingBlack', u - h - 0.01, v - h - 0.01, L.top - 0.7, u + h + 0.01, v + h + 0.01, L.top);
+    // колонны по контуру атриума стоят в стенах площадки — без чёрного оголовка
+    const rim = inRect(u, v, ATR, 0.05);
+    b.box('columnWhite', u - h, v - h, L.z, u + h, v + h, L.top - (porch ? 0.07 : rim ? 0 : 0.7));
+    if (!porch && !rim) cb.box('ceilingBlack', u - h - 0.01, v - h - 0.01, L.top - 0.7, u + h + 0.01, v + h + 0.01, L.top);
   }
 }
 
@@ -390,20 +392,35 @@ function glassRail(b, A, C, z0) {
     b.box('stainless', P[0] - 0.02, P[1] - 0.02, z0, P[0] + 0.02, P[1] + 0.02, z0 + 1.0);
   }
 }
-// Портреты учёных на стенах парящей площадки
+// Стенды «Великие учёные» на стенах парящей площадки: печать под акрилом 1,8 × 0,9 м
+// на хромированных дистанционных держателях (по панорамам тура)
 function decoWall(ctx, w, len, at, t, z0) {
   const { b } = ctx;
   const d = [(w.b[0] - w.a[0]) / len, (w.b[1] - w.a[1]) / len];
   const s = w.side || 1;
   let k = w.a[0] > 13 ? 3 : 0;
-  for (let p = 1.4; p + 1.6 < len - 0.6; p += 2.7) {
-    const g = boxGeo(1.6, 1.0, 0.03);
+  const PW = 1.8, PH = 0.9;
+  // облицовка в толщину колонн: стена площадки гладкая, пилястры не выступают
+  const face = Math.max(t / 2, GRID.column / 2 + 0.005), nrm = [-d[1] * s, d[0] * s];
+  const lin = (face - t / 2) / 2 + t / 2;
+  segBox(b, 'wallWhite', [w.a[0] + nrm[0] * lin, w.a[1] + nrm[1] * lin], [w.b[0] + nrm[0] * lin, w.b[1] + nrm[1] * lin], face - t / 2, z0, z0 + 2.25);
+  t = face * 2;
+  for (let p = 1.3; p + PW < len - 0.5; p += 2.75) {
+    const g = boxGeo(PW, PH, 0.012);
     const uv = g.attributes.uv, pos = g.attributes.position;
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, (pos.getX(i) + 0.8) / 1.6 * (s > 0 ? 1 : -1) + (s > 0 ? 0 : 1), (pos.getY(i) + 0.5));
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, 1 - (pos.getX(i) + PW / 2) / PW, (pos.getY(i) + PH / 2) / PH);
     g.rotateY(Math.atan2(d[1], d[0]) + (s > 0 ? 0 : Math.PI));
-    const P = at(p + 0.8), off = s * (t / 2 + 0.02);
+    const P = at(p + PW / 2), off = s * (t / 2 + 0.032);
     g.translate(sx(P[0] - d[1] * off), sy(z0 + 1.55), sz(P[1] + d[0] * off));
     b.add(`portrait:${k++ % 8}`, g);
+    // держатели по углам
+    for (const [du, dz] of [[-PW / 2 + 0.06, PH / 2 - 0.06], [PW / 2 - 0.06, PH / 2 - 0.06], [-PW / 2 + 0.06, -PH / 2 + 0.06], [PW / 2 - 0.06, -PH / 2 + 0.06]]) {
+      const Q = at(p + PW / 2 + du), o2 = s * (t / 2 + 0.018);
+      const c = new THREE.CylinderGeometry(0.011, 0.011, 0.036, 10);
+      c.rotateX(Math.PI / 2); c.rotateY(Math.atan2(d[1], d[0]));
+      c.translate(sx(Q[0] - d[1] * o2), sy(z0 + 1.55 + dz), sz(Q[1] + d[0] * o2));
+      b.add('stainless', c);
+    }
   }
 }
 
@@ -669,26 +686,22 @@ function platform(ctx) {
   const [u0, v0, u1, v1] = PLATFORM.rect, z = PLATFORM.z;
   const [su, sv] = PLATFORM.statue;
   I('statue', F.statueGeo, 'marble').push(mtx(su, sv, z, -Math.PI / 2));
-  // кресла-мешки: россыпь у ЮВ стены и полукругом в центре
-  const cols = ['#f08bb8', '#63b84e', '#f2d64b', '#2f6fd1', '#23a39a', '#8ad0f0', '#1f4fb8'];
+  // кресла-мешки из нейлона: два ряда вдоль ЮВ стены под стендами (панорама Zly)
+  const cols = ['#2257d6', '#f27ab8', '#f5d63d', '#3dbf5f', '#8ab8ec', '#1b3fbf', '#f27ab8', '#2257d6'];
   let k = 0;
-  for (let u = u0 + 1.4; u < u0 + 11; u += 0.95) I('beanbag', F.beanbagGeo, 'fabric').push(mtx(u, v0 + 1.1 + (R() - 0.5) * 0.3, z, R() * 6), cols[k++ % cols.length]);
-  for (let i = 0; i < 9; i++) {
-    const a = -0.3 + i * 0.28;
-    I('beanbag', F.beanbagGeo, 'fabric').push(mtx(22.2 + Math.cos(a) * 2.6, 21.6 + Math.sin(a) * 1.8, z, R() * 6), cols[k++ % cols.length]);
+  for (const [dv, du0, step] of [[0.75, 1.1, 0.88], [1.5, 1.5, 0.95]]) {
+    for (let u = u0 + du0; u < u0 + 11.4; u += step) {
+      const sc = 0.9 + R() * 0.25;
+      I('beanbag', F.beanbagGeo, 'nylon').push(mtx(u + (R() - 0.5) * 0.25, v0 + dv + (R() - 0.5) * 0.2, z, (R() - 0.5) * 0.9, [sc, sc, sc]), cols[k++ % cols.length]);
+    }
   }
-  // серые скамьи вдоль стен
-  for (const [a, e] of [[20.4, 24.2], [27.4, 31.2]]) I('pbench', () => F.benchGeo(3.6, 0.55), 'fabric').push(mtx(u0 + 0.55, (a + e) / 2, z, Math.PI / 2), '#9a9ea3');
-  I('pbench', () => F.benchGeo(3.6, 0.55), 'fabric').push(mtx(23.4, v1 - 0.5, z), '#9a9ea3');
+  // скамеек у стен на панорамах нет — стена со стендами свободна
   // мольберты с фото старой библиотеки и флипчарт
-  for (const [u, v, r] of [[25.2, 29.6, -1.9], [25.3, 21.2, -1.3]]) {
-    I('easel', F.easelGeo, 'easelWood').push(mtx(u, v, z, r));
-    I('print', F.printGeo, 'plastic').push(mtx(u, v, z, r), '#8a5a3a');
-  }
-  // пальмы в кашпо
-  for (const [u, v] of [[u0 + 0.8, v1 - 0.8], [u0 + 0.8, v0 + 0.8], [u1 - 0.8, v0 + 0.8]]) {
+  easelRow({ ...ctx, z }, [[25.2, 29.6, 1.9], [25.3, 21.2, 1.3]]);
+  // арековые пальмы в белых кашпо
+  for (const [u, v] of [[u0 + 0.8, v1 - 0.8], [u0 + 0.8, v0 + 0.8], [u1 - 0.8, v0 + 0.8], [u0 + 5.9, v1 - 0.7]]) {
     I('pot', F.potGeo, 'plastic').push(mtx(u, v, z));
-    I('plant', () => F.plantGeo(1.5), 'leaf').push(mtx(u, v, z + 0.45, R() * 6));
+    I('palm', () => F.palmGeo(2.0), 'leaf').push(mtx(u, v, z + 0.46, R() * 6));
   }
 }
 
@@ -774,12 +787,14 @@ function ceilingLights(batch, rect, y, key = 'led', pitch = 3.0, avoid = []) {
 function starLights(batch, rect, y, step = 2.6) {
   for (const [a, c, e, f] of F.starField(rect[0] + 0.3, rect[1] + 0.3, rect[2] - 0.3, rect[3] - 0.3, step)) batch.add('ledCool', F.stripGeo(sx(a), sz(c), sx(e), sz(f), sy(y)));
 }
+// Мольберты с фото-холстами. r — поворот: холст смотрит в сторону (−sin r, cos r) по (u, v).
+let photoSeq = 0;
 function easelRow(ctx, pts) {
   const { I } = ctx;
-  const prints = ['#d9d2c5', '#9fb7c9', '#c9a98f', '#b0c49a', '#c4b3d9', '#2d3a5a'];
-  pts.forEach(([u, v, r], i) => {
+  pts.forEach(([u, v, r]) => {
+    const k = photoSeq++ % 6;
     I('easel', F.easelGeo, 'easelWood').push(mtx(u, v, ctx.z, r));
-    I('print', F.printGeo, 'plastic').push(mtx(u, v, ctx.z, r), prints[i % prints.length]);
+    I(`canvas${k}`, () => F.canvasGeo(0.9, 0.7), `canvasPhoto:${k}`).push(mtx(u, v, ctx.z, r));
   });
 }
 function hall(ctx, zn) {
@@ -787,21 +802,31 @@ function hall(ctx, zn) {
   const [u0, v0, u1, v1] = zn.rect;
   // мольберты вдоль стены гардероба
   const pts = [];
-  for (let v = v0 + 1.6; v < v1 - 1.2; v += 2.2) pts.push([u0 + 0.9, v, Math.PI / 2]);
+  for (let v = v0 + 1.6; v < v1 - 1.2; v += 2.2) pts.push([u0 + 0.9, v, -Math.PI / 2 + 0.12]);
   easelRow(ctx, pts);
-  // белые диваны-«камни» и цветные пуфы у окон СВ фасада, столики с зелёными стульями
-  const cols = ['#e9e7e2', '#e9e7e2', '#dcdad4'];
-  const pc = ['#e8641c', '#5cae54', '#8f5bb5', '#2f6fd1', '#e6397a'];
+  // у окон СВ фасада: островные диваны из серого велюра, кубические пуфы вокруг белых
+  // журнальных столиков (панорама холла), у торца — высокий стол с зелёными стульями
+  const pc = ['#8f3fbf', '#3fae4f', '#2f5fd1', '#e8761c', '#c23aa8', '#3fae4f'];
   let k = 0;
-  for (const [u, v, r] of [[50.0, 9.2, 0.6], [53.4, 9.0, -0.6], [49.9, 13.3, 0.4], [53.6, 13.3, -0.4], [50.2, 17.2, 0.2], [53.4, 17.0, -0.2]]) {
-    I('sofaH', () => F.sofaGeo(2.1), 'fabric').push(mtx(u, v, z, r), cols[k % cols.length]);
-    for (let i = 0; i < 2; i++) I('poufH', F.poufGeo, 'fabric').push(mtx(u + (i - 0.5) * 0.8, v + 1.1, z, R()), pc[k++ % pc.length]);
+  for (const [u, v, r] of [[49.4, 10.4, 0.55], [53.1, 12.3, -0.25], [49.6, 15.6, -0.45]]) I('sofaIsland', () => F.islandSofaGeo(2.6, 1.05), 'fabric').push(mtx(u, v, z, r), '#b9bcc1');
+  for (const [u, v] of [[51.6, 9.0], [52.0, 15.0]]) {
+    I('ctable', () => new THREE.CylinderGeometry(0.36, 0.36, 0.035, 28).translate(0, 0.4, 0), 'tableWhite').push(mtx(u, v, z));
+    I('ctableBase', () => new THREE.CylinderGeometry(0.2, 0.26, 0.38, 20).translate(0, 0.19, 0), 'tableWhite').push(mtx(u, v, z));
+    for (let i = 0; i < 4; i++) {
+      const a = i * 1.57 + 0.4 + R() * 0.3;
+      I('poufCube', F.cubePoufGeo, 'fabric').push(mtx(u + Math.cos(a) * 0.72, v + Math.sin(a) * 0.72, z, R()), pc[k++ % pc.length]);
+    }
   }
-  for (const [u, v] of [[51.6, 11.4], [51.6, 15.2]]) {
+  for (const [u, v] of [[53.2, 17.6]]) {
     I('rtable', () => new THREE.CylinderGeometry(0.5, 0.5, 0.04, 24).translate(0, 0.74, 0), 'tableWhite').push(mtx(u, v, z));
     I('rtableLeg', () => new THREE.CylinderGeometry(0.03, 0.03, 0.74, 8).translate(0, 0.37, 0), 'deskLeg').push(mtx(u, v, z));
     for (let i = 0; i < 4; i++) I('pchair', F.plasticChairGeo, 'chairWhite').push(mtx(u + Math.cos(i * 1.57) * 0.8, v + Math.sin(i * 1.57) * 0.8, z, -i * 1.57 - Math.PI / 2));
   }
+  // ролл-ап «SCHOOL 21» у турникетов и экран-заставка на колонне
+  I('rollup', F.rollupGeo, 'monitor').push(mtx(49.1, 18.7, z, Math.PI));
+  I('rollupPrint', F.rollupPrintGeo, 'rollup').push(mtx(49.1, 18.7, z, Math.PI));
+  ctx.b.box('black', 47.98, 18.215, z + 2.26, 49.22, 18.25, z + 2.96);
+  uvPanel(ctx.b, 'lobbyScreen', [49.15, 18.25], [48.05, 18.25], z + 2.3, z + 2.92, 0.04);
   // кашпо с монстерами у стеклянной стены входа
   for (const u of [43.4, 49.2, 53.8]) {
     I('pot', F.potGeo, 'plastic').push(mtx(u, v0 + 0.7, z));
@@ -822,7 +847,7 @@ function lobby(ctx, zn) {
   if (zn.id === 'l1-foyer') {
     // модульные скамьи и мольберты
     for (const [u, v, r] of [[31.8, 11.2, Math.PI / 2], [33.6, 8.2, 0.3]]) I('lbench', () => F.benchGeo(2.2, 0.6), 'fabric').push(mtx(u, v, z, r), '#9a9ea3');
-    easelRow(ctx, [[35.6, 10.0, -Math.PI / 2], [35.6, 12.6, -Math.PI / 2]]);
+    easelRow(ctx, [[35.6, 10.0, Math.PI / 2 - 0.1], [35.6, 12.6, Math.PI / 2 + 0.1]]);
   }
   if (zn.id === 'l1-lobby') {
     for (const [u, v] of [[43.2, 26.2], [47.9, 27.6], [37.2, 24.2]]) {
@@ -990,10 +1015,15 @@ function turnstiles(ctx, zn) {
     const a = i === 0 ? u : i === n ? u - w : u - w / 2;
     b.box('stainless', a, cv - 0.7, z, a + w, cv + 0.7, z + 1.0);
     b.box('black', a, cv - 0.71, z + 1.0, a + w, cv + 0.71, z + 1.02);
-    b.box('partitionGlass', a + w / 2 - 0.01, cv - 0.2, z + 0.35, a + w / 2 + 0.01, cv + 0.2, z + 1.2);
+    // высокие стеклянные створки (0,35–1,6 м), индикатор на торце, Face ID на стойке у входа
+    b.box('partitionGlass', a + w / 2 - 0.01, cv - 0.22, z + 0.35, a + w / 2 + 0.01, cv + 0.22, z + 1.6);
+    ctx.lights.box('faceScreen', a + w / 2 - 0.03, cv - 0.715, z + 0.9, a + w / 2 + 0.03, cv - 0.71, z + 0.96);
     if (i < n) {
-      b.box('stainless', a + w / 2 - 0.02, cv - 0.62, z + 1.0, a + w / 2 + 0.02, cv - 0.58, z + 1.45);
-      b.box('black', a + w / 2 - 0.05, cv - 0.62, z + 1.45, a + w / 2 + 0.05, cv - 0.58, z + 1.62);
+      ctx.I('faceId', F.faceIdGeo, 'monitor').push(mtx(a + w / 2, cv - 0.55, z + 1.02, Math.PI));
+      ctx.I('faceScreen', F.faceScreenGeo, 'faceScreen').push(mtx(a + w / 2, cv - 0.55, z + 1.02, Math.PI));
+      // голубые светодиодные линии на полу в проходах
+      const lu = a + w + (step - w) / 2 - (i === 0 ? 0.045 : 0);
+      for (const dv of [-1.5, -1.1, 1.1, 1.5]) ctx.lights.box('ledBlue', lu - 0.18, cv + dv - 0.012, z + 0.002, lu + 0.18, cv + dv + 0.012, z + 0.006);
     }
   }
 }
@@ -1037,6 +1067,12 @@ function conference(ctx, zn) {
   b.box('black', u0 + 0.34, 5.7, z + 0.5, u0 + 0.38, 10.9, z + 3.25);
   uvPanel(b, 'slide', [u0, 10.8], [u0, 5.8], z + 0.6, z + 3.15, 0.39);
   b.box('pixelMural', u1 - 0.14, v0 + 2.8, z + 0.2, u1 - 0.1, v1 - 3.0, z + 3.9);
+  // телевизоры-дублёры на первых колоннах, смотрят в зал (панорама 2vh)
+  for (const v of [6.6, 12.6]) {
+    const fu = 18.6 + GRID.column / 2;
+    b.box('black', fu, v - 0.62, z + 2.25, fu + 0.05, v + 0.62, z + 3.0);
+    uvPanel(b, 'slide', [fu, v + 0.56], [fu, v - 0.56], z + 2.3, z + 2.95, 0.055);
+  }
   // ряды белых стульев лицом к экрану (первый ряд ~5 м от экрана)
   for (let u = u0 + 5.0; u < u1 - 2.1; u += 0.95) for (let v = v0 + 1.6; v < v1 - 2.0; v += 0.55) {
     if (Math.abs(v - 8.3) < 0.55) continue;
@@ -1058,7 +1094,8 @@ function kitchen(ctx, zn) {
   }
   if (alongV) b.box('black', line[0], line[3] - 1.4, z, line[2], line[3], z + 2.0);
   else b.box('black', line[2] - 1.4, line[1], z, line[2], line[3], z + 2.0);
-  b.box('ceramicMural', u0 + 1.0, v1 - 0.12, z + 1.35, u1 - 1.0, v1 - 0.1, z + 2.9);
+  // мурал с гранатами во всю высоту стены (панорама кухни)
+  uvPanel(b, 'kitchenMural', [u1 - 0.9, v1], [u0 + 0.9, v1], z + 0.95, z + 3.35, 0.17);
   // оранжевые столы с белыми стульями
   const cols = L.id === 'L2' ? [u0 + 1.9, u0 + 6.1, u0 + 8.1] : [u0 + 1.9, u0 + 4.6, u0 + 7.3];
   for (const u of cols) for (let v = v0 + 1.4; v < (L.id === 'L3' ? v1 - 1.9 : v1 - 1.0); v += 2.25) {
@@ -1096,7 +1133,7 @@ function game(ctx, zn) {
   b.box('tableWhite', (u0 + u1) / 2 - 1.4, v0 + 0.3, z, (u0 + u1) / 2 + 1.4, v0 + 0.75, z + 0.42);
   b.box('tvScreen', (u0 + u1) / 2 - 0.9, v1 - 0.18, z + 1.0, (u0 + u1) / 2 + 0.9, v1 - 0.12, z + 2.05);
   const cols = ['#f08bb8', '#2fa84f', '#1f63d1', '#f08bb8', '#2fa84f'];
-  for (let i = 0; i < 5; i++) I('beanbag', F.beanbagGeo, 'fabric').push(mtx(u0 + 1.0 + i * 1.05, v0 + 1.6 + (R() - 0.5) * 0.3, z, R() * 6), cols[i]);
+  for (let i = 0; i < 5; i++) I('beanbag', F.beanbagGeo, 'nylon').push(mtx(u0 + 1.0 + i * 1.05, v0 + 1.6 + (R() - 0.5) * 0.3, z, R() * 6), cols[i]);
 }
 function pingpong(ctx, zn) {
   const { b, I, z } = ctx;
@@ -1110,7 +1147,7 @@ function pingpong(ctx, zn) {
     for (const [du, dv] of [[-1.2, -0.6], [1.2, -0.6], [-1.2, 0.6], [1.2, 0.6]]) b.box('deskLeg', cu + du - 0.03, cv + dv - 0.03, z, cu + du + 0.03, cv + dv + 0.03, z + 0.72);
   }
   const cols = ['#f08bb8', '#2f6fd1', '#63b84e'];
-  cols.forEach((c, i) => I('beanbag', F.beanbagGeo, 'fabric').push(mtx(u0 + 1.0, v1 - 1.4 - i * 1.3, z, Math.PI / 2), c));
+  cols.forEach((c, i) => I('beanbag', F.beanbagGeo, 'nylon').push(mtx(u0 + 1.0, v1 - 1.4 - i * 1.3, z, Math.PI / 2), c));
 }
 function office(ctx, zn) {
   const { I, z } = ctx;
@@ -1129,7 +1166,7 @@ function wardrobe(ctx, zn) {
     // по плану: два ряда шкафчиков поперёк, у лифтов — кресла-мешки, у двери в холл — столики
     for (const v of [12.9, 15.5]) b.box('lockerGray', u0 + 0.9, v, z, u1 - 0.9, v + 0.5, z + 1.9);
     const cols = ['#f08bb8', '#2f6fd1', '#63b84e', '#f2d64b'];
-    cols.forEach((c, i) => I('beanbag', F.beanbagGeo, 'fabric').push(mtx(u0 + 1.3 + i * 1.3, v1 - 1.2, z, R() * 6), c));
+    cols.forEach((c, i) => I('beanbag', F.beanbagGeo, 'nylon').push(mtx(u0 + 1.3 + i * 1.3, v1 - 1.2, z, R() * 6), c));
     for (const [u, v] of [[38.3, 10.4], [40.9, 10.4]]) {
       I('rtable', () => new THREE.CylinderGeometry(0.5, 0.5, 0.04, 24).translate(0, 0.74, 0), 'tableWhite').push(mtx(u, v, z));
       I('rtableLeg', () => new THREE.CylinderGeometry(0.03, 0.03, 0.74, 8).translate(0, 0.37, 0), 'deskLeg').push(mtx(u, v, z));
