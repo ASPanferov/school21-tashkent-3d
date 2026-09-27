@@ -233,12 +233,17 @@ class Fireworks {
     this.points.frustumCulled = false;
     this.points.renderOrder = 10;
     this.cols = ['#ffd34d', '#2fd0b3', '#ff5fa2', '#8f7bff', '#ffffff', '#ff5a3a', '#6dff8a'].map((c) => new THREE.Color(c));
+    this.cfg = { speed: 1, radius: [25, 80], height: [34, 74] };
+    this.baseSize = this.points.material.size;
   }
+  // настройка для съёмки: крупнее и ближе к зданию
+  set({ size = 1, speed = 1, radius = [25, 80], height = [34, 74] } = {}) { this.points.material.size = this.baseSize * size; this.cfg = { speed, radius, height }; }
   alloc() { const i = this.next; this.next = (this.next + 1) % this.N; return i; }
   launch() {
     const R = this.R;
-    const ang = R() * Math.PI * 2, rad = 25 + R() * 55;
-    const T = P(27.6 + Math.cos(ang) * rad, 27.6 + Math.sin(ang) * rad, 34 + R() * 40);
+    const { radius: [r0, r1], height: [h0, h1] } = this.cfg;
+    const ang = R() * Math.PI * 2, rad = r0 + R() * (r1 - r0);
+    const T = P(27.6 + Math.cos(ang) * rad, 27.6 + Math.sin(ang) * rad, h0 + R() * (h1 - h0));
     const i = this.alloc(), k = i * 3, dur = 1.1 + R() * 0.5;
     this.pos[k] = T.x + (R() - 0.5) * 8; this.pos[k + 1] = sy(-1.5); this.pos[k + 2] = T.z + (R() - 0.5) * 8;
     this.vel[k] = (T.x - this.pos[k]) / dur; this.vel[k + 1] = (T.y - this.pos[k + 1]) / dur; this.vel[k + 2] = (T.z - this.pos[k + 2]) / dur;
@@ -248,7 +253,7 @@ class Fireworks {
     this.burstCol[k] = c.r; this.burstCol[k + 1] = c.g; this.burstCol[k + 2] = c.b;
   }
   burst(x, y, z, r0, g0, b0) {
-    const R = this.R, n = 130 + Math.floor(R() * 90), sp = 10 + R() * 6, ring = R() < 0.25;
+    const R = this.R, n = 130 + Math.floor(R() * 90), sp = (10 + R() * 6) * this.cfg.speed, ring = R() < 0.25;
     const two = R() < 0.35 ? this.cols[Math.floor(R() * this.cols.length)] : null;
     for (let j = 0; j < n; j++) {
       const i = this.alloc(), k = i * 3;
@@ -263,9 +268,9 @@ class Fireworks {
       this.base[k] = (c ? c.r : r0) * 2.4; this.base[k + 1] = (c ? c.g : g0) * 2.4; this.base[k + 2] = (c ? c.b : b0) * 2.4;
     }
   }
-  update(dt) {
+  update(dt, rate = 1) {
     const R = this.R;
-    this.timer -= dt;
+    this.timer -= dt * rate;
     if (this.timer <= 0) { this.launch(); if (R() < 0.35) this.launch(); this.timer = 0.35 + R() * 0.75; }
     const { N, pos, vel, col, base, age, life } = this;
     for (let i = 0; i < N; i++) {
@@ -302,7 +307,7 @@ export function buildParty({ hq = true } = {}) {
 
   // лента и бант
   const rtex = ART.ribbonTexture();
-  const rmat = new THREE.MeshStandardMaterial({ map: rtex, side: THREE.DoubleSide, roughness: 0.32, metalness: 0.12, emissive: 0x5a0610, emissiveIntensity: 0.25 });
+  const rmat = new THREE.MeshStandardMaterial({ map: rtex, side: THREE.DoubleSide, roughness: 0.32, metalness: 0.12, emissive: 0x5a0610, emissiveIntensity: 0.55 });
   add('roof', new THREE.Mesh(ribbonGeo(wrapAxis('v'), new THREE.Vector3(1, 0, 0), 2.4), rmat));
   add('roof', new THREE.Mesh(ribbonGeo(wrapAxis('u'), new THREE.Vector3(0, 0, 1), 2.4), rmat));
   add('roof', bow(rmat));
@@ -359,10 +364,8 @@ export function buildParty({ hq = true } = {}) {
 
   // флажки: над атриумом по диагоналям на уровне парапетов 2 этажа, по краю козырька,
   // между колоннами площадки и под пирамидой лаунжа
-  add('atr', bunting([[[12.9, 18.9, 5.55], [30.3, 36.3, 5.55], 1.2], [[12.9, 36.3, 5.55], [30.3, 18.9, 5.55], 1.2]], hq, 21));
+  add('atr', bunting([[[12.9, 18.9, 7.4], [30.3, 36.3, 7.4], 0.8], [[12.9, 36.3, 7.4], [30.3, 18.9, 7.4], 0.8]], hq, 21));
   add('ext', bunting([[[41.9, -6.75, 3.25], [55.0, -6.75, 3.25], 0.45]], hq, 22));
-  const PC = B.PLATFORM.columns;
-  add('M', bunting([[0, 1], [1, 3], [3, 2], [2, 0]].map(([i, j]) => [[...PC[i], 5.4], [...PC[j], 5.4], 0.55]), hq, 23));
   add('roof', bunting([[[SK.u0 + 0.6, SK.v0 + 0.6, 16.9], [SK.u1 - 0.6, SK.v1 - 0.6, 16.9], 1.3], [[SK.u0 + 0.6, SK.v1 - 0.6, 16.9], [SK.u1 - 0.6, SK.v0 + 0.6, 16.9], 1.3]], hq, 24));
 
   // конфетти
@@ -390,7 +393,8 @@ export function buildParty({ hq = true } = {}) {
 
   return {
     group: root,
-    update(dt) { fw.update(dt); },
+    update(dt, rate = 1) { fw.update(dt, rate); },
+    setFireworks(o) { fw.set(o); },
     setCut(cut) {
       const ci = cut ? ORDER.indexOf(cut) : ORDER.length;
       const show = { roof: !cut, band3: !cut || ci >= 4, ext: cut !== 'B1', L1: ci >= 1, M: ci >= 2, atr: ci >= 3, L3: ci >= 4, B1: true };

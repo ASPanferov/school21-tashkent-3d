@@ -871,24 +871,30 @@ function hideHint() { $('hint').hidden = true; }
 // ── Цикл ─────────────────────────────────────────────────────────────────────
 const clock = new THREE.Clock();
 let lastDetailCheck = 0;
-function frame() {
-  const dt = Math.min(0.05, clock.getDelta());
-  if (tween) {
-    tween.t = Math.min(1, tween.t + dt / 1.3);
-    const k = tween.t < 0.5 ? 4 * tween.t ** 3 : 1 - (-2 * tween.t + 2) ** 3 / 2;
-    camera.position.lerpVectors(tween.from.pos, tween.to.pos, k);
-    controls.target.lerpVectors(tween.from.tgt, tween.to.tgt, k);
-    if (tween.t >= 1) tween = null;
+// Один кадр. auto — обычный режим (твин камеры, прогулка, орбита); без него камерой
+// управляет внешний сценарий (съёмка видео: __s21.capture(dt))
+function renderFrame(dt, auto = true, fwRate = 1) {
+  if (auto) {
+    if (tween) {
+      tween.t = Math.min(1, tween.t + dt / 1.3);
+      const k = tween.t < 0.5 ? 4 * tween.t ** 3 : 1 - (-2 * tween.t + 2) ** 3 / 2;
+      camera.position.lerpVectors(tween.from.pos, tween.to.pos, k);
+      controls.target.lerpVectors(tween.from.tgt, tween.to.tgt, k);
+      if (tween.t >= 1) tween = null;
+    }
+    if (state.walk) walk.update(dt); else controls.update();
   }
-  if (state.walk) walk.update(dt); else controls.update();
-  if (state.party && party) party.update(dt);
+  if (state.party && party) party.update(dt, fwRate);
   sky.position.copy(camera.position);
-  if (performance.now() - lastDetailCheck > 300) { lastDetailCheck = performance.now(); updateDetailVisibility(); }
-  // тень следует за камерой, когда она внутри/рядом
+  if (!auto || performance.now() - lastDetailCheck > 300) { lastDetailCheck = performance.now(); updateDetailVisibility(); }
   if (state.view === '3d') {
     composer.render();
-    labelRenderer.render(scene, camera);
+    if (auto) labelRenderer.render(scene, camera);
   }
+}
+function frame() {
+  const dt = Math.min(0.05, clock.getDelta());
+  if (!state.capture) renderFrame(dt);
   requestAnimationFrame(frame);
 }
 
@@ -922,4 +928,5 @@ build().then(() => {
 });
 
 // для отладки из консоли
-window.__s21 = { scene, camera, controls, state, world, applyCut, applyTime, fitCamera, renderer, mats, walk: walk.api, quality: QUALITY, composer };
+window.__s21 = { scene, camera, controls, state, world, applyCut, applyTime, fitCamera, renderer, mats, walk: walk.api, quality: QUALITY, composer,
+  setParty, partyApi: () => party, capture: (dt, fwRate) => renderFrame(dt, false, fwRate), labelRenderer };
