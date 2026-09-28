@@ -12,6 +12,9 @@ const IN0 = 0.3, IN1 = SIZE - 0.3;
 const lvl = (id) => LEVELS.find((l) => l.id === id);
 const inRect = (u, v, r, m = 0) => u > r[0] - m && u < r[2] + m && v > r[1] - m && v < r[3] + m;
 const onFacadeLine = (a, b) => (Math.abs(a[0] - b[0]) < 0.01 && (a[0] < 0.7 || a[0] > SIZE - 0.7)) || (Math.abs(a[1] - b[1]) < 0.01 && (a[1] < 0.7 || a[1] > SIZE - 0.7));
+// всё, что упирается в фасад, доводим почти до остекления (0.25 от наружной грани): вдоль витража не остаётся щели
+const FACADE_GAP = 0.25;
+const toFacade = (x) => (x < 0.7 ? FACADE_GAP : x > SIZE - 0.7 ? SIZE - FACADE_GAP : x);
 const ATR = [ATRIUM.u0, ATRIUM.v0, ATRIUM.u1, ATRIUM.v1];
 const PORCH = B.ENTRANCE.porch ? [B.ENTRANCE.porch.u0, 0.3, SIZE - 0.3, B.ENTRANCE.porch.v1] : null;
 
@@ -306,8 +309,9 @@ function wallList(L) {
 function walls(ctx) {
   const { L, b } = ctx;
   const doors = B.DOORS.filter((d) => d.level === L.id);
-  for (const w of wallList(L)) {
-    if (onFacadeLine(w.a, w.b)) continue;
+  for (const w0 of wallList(L)) {
+    if (onFacadeLine(w0.a, w0.b)) continue;
+    const w = { ...w0, a: w0.a.map(toFacade), b: w0.b.map(toFacade) };
     const K = KIND[w.k] || KIND.w;
     const len = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]);
     if (len < 0.05) continue;
@@ -461,8 +465,9 @@ function coreStair(ctx, c, z0, z1) {
   // марш 1: от площадки у двери вглубь (левая половина), марш 2: обратно (правая половина)
   runSteps(b, f, Ld, Ld + run, 0.13, half - 0.07, z0, zm, n, 'graniteStep', 'concrete');
   runSteps(b, f, Ld + run, Ld, half + 0.07, f.W - 0.13, zm, z1, n, 'graniteStep', 'concrete');
-  // промежуточная площадка
-  const A = f.pt(Ld + run, 0.13), C = f.pt(f.D - 0.13, f.W - 0.13);
+  // промежуточная площадка; у фасада — до самого остекления, без щели, в которую можно упасть
+  const far = f.pt(f.D, half), toF = (x) => (toFacade(x) !== x ? Math.abs(toFacade(x) - x) : -0.13);
+  const A = f.pt(Ld + run, 0.13), C = f.pt(f.D + Math.max(toF(far[0]), toF(far[1])), f.W - 0.13);
   b.box('concrete', Math.min(A[0], C[0]), Math.min(A[1], C[1]), zm - 0.2, Math.max(A[0], C[0]), Math.max(A[1], C[1]), zm);
   // стенка между маршами
   segBox(b, 'wallWhite', f.pt(Ld, half), f.pt(Ld + run, half), 0.14, z0, z1 + 1.05);
@@ -626,6 +631,20 @@ function amphitheater(ctx) {
       // ковролин и подушки
       prism(b, 'carpetGreen', clipAll(sector(C, r[k] + 0.55, r[k + 1] - 0.02, A.rowAngles[0], A.rowAngles[1]), [...planes, ...pc]), zt, zt + 0.012);
       prism(b, 'cushion', clipAll(sector(C, r[k] + 0.06, r[k] + 0.52, A.rowAngles[0] + 1.5, A.rowAngles[1] - 1.5), [...planes, ...pc]), zt, zt + 0.11);
+    }
+  }
+  // торцы рядов: ступенчатые щёки из туфа на 0.9 выше ряда — с торца ряда не шагнёшь вниз на сцену
+  for (const [ang, side] of [[A.rowAngles[0], -1], [A.rowAngles[1], 1]]) {
+    const d = [Math.cos((ang * Math.PI) / 180), Math.sin((ang * Math.PI) / 180)];
+    let rMax = r[r.length - 1];
+    for (const [pa, pb, pc] of planes) {
+      const f0 = pa * C[0] + pb * C[1] + pc, sl = pa * d[0] + pb * d[1];
+      if (sl < 0) rMax = Math.min(rMax, -f0 / sl);
+    }
+    for (let k = 0; k < r.length - 1 && r[k] < rMax - 0.05; k++) {
+      const ra = r[k], rb = Math.min(r[k + 1], rMax);
+      const P = [C[0] + d[0] * ra, C[1] + d[1] * ra], Q = [C[0] + d[0] * rb, C[1] + d[1] * rb];
+      segBox(b, 'wallPink', P, Q, 0.25, A.floorZ, A.stageZ + A.rowRise * (k + 1) + 0.9, side * 0.125, 0.02);
     }
   }
   // кольцевой проход −1.80: внутренняя полоса разрезана проходами, внешняя — сплошная
@@ -792,16 +811,33 @@ function zoneContents(ctx, zn) {
 function clusterRows(ctx, zn) {
   const { b, I, R, z } = ctx;
   let r = 0;
-  for (const d of B.DESKS.filter((q) => q.level === zn.level && q.cluster === zn.cluster)) {
+  // двусторонний стол 1.2 м (по 0.6 на сторону): между рядами с шагом 2 м остаётся проход 0.8 м
+  const DW = 1.2;
+  const src = B.DESKS.filter((q) => q.level === zn.level && q.cluster === zn.cluster);
+  const ats = [...new Set(src.map((q) => q.at))].sort((x, y) => x - y);
+  // колонна, попавшая в ряд, разрезает стол (зазор 5 см), обрезки короче метра не ставим
+  const cols = [];
+  for (const u of GRID.u) for (const v of GRID.v) if (inRect(u, v, zn.rect, 0.05)) cols.push([u, v]);
+  const rows = src.flatMap((d) => {
+    let parts = [[Math.min(d.from, d.to), Math.max(d.from, d.to)]];
+    for (const [cu, cv] of cols) {
+      const across = d.axis === 'v' ? cu : cv, along = d.axis === 'v' ? cv : cu;
+      if (Math.abs(across - d.at) > DW / 2 + GRID.column / 2) continue;
+      parts = parts.flatMap(([p0, p1]) => (along + 0.45 <= p0 || along - 0.45 >= p1 ? [[p0, p1]]
+        : [[p0, along - 0.45], [along + 0.45, p1]].filter(([x, y]) => y - x >= 1.0)));
+    }
+    return parts.map(([from, to]) => ({ ...d, from, to }));
+  });
+  for (const d of rows) {
     const alongV = d.axis === 'v';
     const a0 = Math.min(d.from, d.to), a1 = Math.max(d.from, d.to), len = a1 - a0, mid = (a0 + a1) / 2;
     const cu = alongV ? d.at : mid, cv = alongV ? mid : d.at;
-    const du = alongV ? 1.4 : len, dv = alongV ? len : 1.4;
+    const du = alongV ? DW : len, dv = alongV ? len : DW;
     b.box('deskTop', cu - du / 2, cv - dv / 2, z + 0.72, cu + du / 2, cv + dv / 2, z + 0.755);
     if (alongV) b.box('deskLeg', cu - 0.02, cv - dv / 2 + 0.1, z + 0.755, cu + 0.02, cv + dv / 2 - 0.1, z + 0.9);
     else b.box('deskLeg', cu - du / 2 + 0.1, cv - 0.02, z + 0.755, cu + du / 2 - 0.1, cv + 0.02, z + 0.9);
     for (const end of [-1, 1]) {
-      const g = new THREE.BoxGeometry(1.4, 0.72, 0.06);
+      const g = new THREE.BoxGeometry(DW, 0.72, 0.06);
       const uv = g.attributes.uv, cell = r % ATLAS_CELLS;
       for (let i = 0; i < uv.count; i++) uv.setX(i, (cell + uv.getX(i)) / ATLAS_CELLS);
       const eu = alongV ? cu : cu + end * (du / 2 - 0.03), ev = alongV ? cv + end * (dv / 2 - 0.03) : cv;
@@ -810,15 +846,16 @@ function clusterRows(ctx, zn) {
       g.translate(sx(eu), sy(z + 0.36), sz(ev));
       b.add(`deskEnd:${zn.cluster}`, g);
     }
-    const seats = Math.max(1, Math.round((len - 0.6) / 1.2));
+    const seats = Math.max(1, Math.round((len - 0.6) / 1.2)), sp = (len - 0.6) / seats;
+    const odd = ats.indexOf(d.at) % 2 === 1;                 // соседние ряды — вразбежку, стулья не упираются спинками
     for (let s = 0; s < seats; s++) {
-      const t = -len / 2 + 0.3 + (s + 0.5) * ((len - 0.6) / seats);
+      const t = -len / 2 + 0.3 + (s + (odd ? 0 : 0.5)) * sp;
       for (const side of [-1, 1]) {
-        const mu = alongV ? cu + side * 0.36 : cu + t, mv = alongV ? cv + t : cv + side * 0.36;
+        const mu = alongV ? cu + side * 0.3 : cu + t, mv = alongV ? cv + t : cv + side * 0.3;
         const rot = alongV ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : (side > 0 ? 0 : Math.PI);
         I('monitor', F.monitorGeo, 'monitor').push(mtx(mu, mv, z, rot));
         I('screen', F.screenGeo, 'screenOff').push(mtx(mu, mv, z, rot));
-        const chu = alongV ? cu + side * 1.15 : cu + t, chv = alongV ? cv + t : cv + side * 1.15;
+        const chu = alongV ? cu + side * 0.85 : cu + t, chv = alongV ? cv + t : cv + side * 0.85;
         I('chair', F.chairGeo, 'chairBlack').push(mtx(chu, chv, z, rot + Math.PI + (R() - 0.5) * 0.5));
       }
     }
@@ -1233,12 +1270,36 @@ function wardrobe(ctx, zn) {
   if (alongU) for (let v = v0 + 1.1; v < v1 - 0.9; v += 2.0) b.box('lockerGray', u0 + 1.4, v, z, u1 - 1.4, v + 0.5, z + 1.9);
   else for (let u = u0 + 1.2; u < u1 - 1.0; u += 1.8) b.box('lockerGray', u, v0 + 1.4, z, u + 0.5, v1 - 1.4, z + 1.9);
 }
+// Санузел: тамбур с умывальниками (между наружной дверью и перегородкой) и кабинки у дальней стены.
+// Умывальники стоят у торцевых стен тамбура — проход между дверями свободен.
 function wc(ctx, zn) {
-  const { b, z } = ctx;
+  const { b, I, z } = ctx;
   const [u0, v0, u1, v1] = zn.rect;
+  const inner = B.DOORS.find((d) => d.level === zn.level && inRect(d.at[0], d.at[1], zn.rect) && d.at[0] > u0 + 0.5 && d.at[0] < u1 - 0.5);
+  const uP = inner ? inner.at[0] : u1 - 2.4;                // перегородка тамбура
   b.box('tileDark', u0 + 0.1, v0 + 0.1, z, u0 + 0.14, v1 - 0.1, z + 2.6);
-  for (let v = v0 + 0.9; v < v1 - 0.8; v += 1.2) b.box('acpGray', u0 + 0.2, v, z, u0 + 1.7, v + 0.04, z + 2.0);
-  b.box('graniteStep', u1 - 0.8, v0 + 0.8, z + 0.82, u1 - 0.2, v1 - 0.8, z + 0.86);
+  const parts = [];
+  for (let v = v0 + 0.9; v < v1 - 0.8; v += 1.2) { b.box('acpGray', u0 + 0.2, v, z, u0 + 1.7, v + 0.04, z + 2.0); parts.push(v); }
+  for (let k = 0; k + 1 < parts.length; k++) {
+    const cv = (parts[k] + parts[k + 1] + 0.04) / 2;
+    I('toiletBowl', () => new THREE.CylinderGeometry(0.19, 0.15, 0.4, 18).scale(1, 1, 1.35).translate(0, 0.2, -0.3), 'glossWhite').push(mtx(u0 + 0.2, cv, z, -Math.PI / 2));
+    I('toiletTank', () => new THREE.BoxGeometry(0.4, 0.4, 0.16).translate(0, 0.62, -0.08), 'glossWhite').push(mtx(u0 + 0.2, cv, z, -Math.PI / 2));
+  }
+  // умывальники: столешница, раковины-чаши, смесители, зеркало во всю длину
+  const ua = uP + 0.15, ub = u1 - 0.15;
+  if (ub - ua < 1.0) return;
+  for (const [vw, dir] of [[v0 + 0.07, 1], [v1 - 0.07, -1]]) {
+    const vf = vw + dir * 0.55;
+    b.box('graniteStep', ua, Math.min(vw, vf), z + 0.82, ub, Math.max(vw, vf), z + 0.86);
+    b.box('graniteStep', ua, Math.min(vf, vf - dir * 0.03), z + 0.66, ub, Math.max(vf, vf - dir * 0.03), z + 0.82);
+    b.box('mirror', ua + 0.05, Math.min(vw, vw + dir * 0.015), z + 1.12, ub - 0.05, Math.max(vw, vw + dir * 0.015), z + 2.02);
+    const n = Math.max(1, Math.floor((ub - ua) / 0.85));
+    for (let i = 0; i < n; i++) {
+      const cu = ua + (ub - ua) * (i + 0.5) / n;
+      I('basin', () => new THREE.CylinderGeometry(0.2, 0.15, 0.13, 24).scale(1, 1, 0.78).translate(0, 0.065, 0), 'glossWhite').push(mtx(cu, vw + dir * 0.3, z + 0.86));
+      I('faucet', () => new THREE.CylinderGeometry(0.016, 0.02, 0.26, 10).translate(0, 0.13, 0), 'stainless').push(mtx(cu, vw + dir * 0.08, z + 0.86));
+    }
+  }
 }
 function booths(ctx, zn) {
   const { b, z } = ctx;

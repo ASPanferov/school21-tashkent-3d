@@ -449,6 +449,22 @@ export class Collider {
     return best;
   }
 
+  // Точка внутри сплошного объёма (лучи по сторонам упираются в изнанку граней) — для анализа проходимости
+  insideAt(x, y, z, far = 6) {
+    if (!this.bvh) return false;
+    const ray = this._ray;
+    let back = 0;
+    for (let i = 0; i < CROSS.length; i += 2) {
+      const dx = CROSS[i], dz = CROSS[i + 1];
+      if (!dx && !dz) continue;
+      ray.origin.set(x, y, z);
+      ray.direction.set(dx, 0, dz).normalize();
+      const h = this.bvh.raycastFirst(ray, THREE.DoubleSide, 0, far);
+      if (h && h.face.normal.x * ray.direction.x + h.face.normal.z * ray.direction.z > 0.2) back++;
+    }
+    return back >= 3;
+  }
+
   // Самый низкий потолок над головой: лучи вверх. +Infinity, если нет.
   ceilingAt(x, z, yBot, yTop, r = 0.14) {
     if (!this.bvh) return Infinity;

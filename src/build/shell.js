@@ -366,6 +366,11 @@ export function buildShell(mats) {
     railing(L1b, [Ld.u0 - 0.05, lo.v0 - 0.12, Ld.z + 1.07], [Ld.u1, lo.v0 - 0.12, Ld.z + 1.07], rOpt);
     railing(L1b, [Ld.u0 - n * tr, up.v1 - 0.12, GRADE + 0.95], [Ld.u0, up.v1 - 0.12, Ld.z + 0.95], rOpt);
     railing(L1b, [Ld.u0 - n * tr, lo.v0 + 0.12, GRADE + 0.95], [Ld.u0, lo.v0 + 0.12, Ld.z + 0.95], rOpt);
+    // поручень огибает торец стенки между маршами — на бортик не зайти с площадки
+    railing(L1b, [Ld.u1, lo.v1 - 0.1, Ld.z + 1.07], [Ld.u1, up.v0 + 0.1, Ld.z + 1.07], rOpt);
+    // угол террасы у верха пандуса: ограждение продолжается до поручня верхнего марша
+    railing(L1b, [c.u0 + 0.12, st.vTop + 0.12, Z1 + 0.95], [tU0 + 0.1, st.vTop + 0.12, Z1 + 0.95], { mat: 'steelExt', bars: 3, step: 1.2 });
+    railing(L1b, [c.u0 + 0.12, st.vTop + 0.12, Z1 + 0.95], [c.u0 + 0.12, up.v0 + 0.1, Z1 + 0.95], { mat: 'steelExt', bars: 3, step: 1.2 });
   } else {
     // старый формат: прямой пандус вдоль фасада
     L1b.add('stepGranite', wedgeU(rp.u0, rp.u1, rp.v0, rp.v1, GRADE, Z1, GRADE - 0.3));

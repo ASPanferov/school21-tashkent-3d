@@ -154,6 +154,7 @@ function specs() {
     desText: () => std({ map: T.desText(), roughness: 0.8 }),
     playWall: () => { const t = T.playWall(); return std({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.25, roughness: 0.7 }); },
     glossWhite: () => std({ color: 0xf6f6f4, roughness: 0.1, metalness: 0.05, side: THREE.DoubleSide }),
+    mirror: () => std({ color: 0xc4ccd1, metalness: 0.9, roughness: 0.1, envMapIntensity: 0.5 }),
     tileDark: () => surf(T.tiles({ base: '#4d4f53', joint: '#3b3c3f', tile: [0.6, 1.2], count: [4, 2], seed: 17, gloss: 0.3 }), { ns: 0.5 }),
     carpetConf: () => surf(T.stepCarpet(), { roughness: 1.0, ns: 0.8 }),
     confWall: () => std({ map: T.stepWall(), roughness: 0.85 }),

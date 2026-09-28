@@ -863,6 +863,9 @@ export function createWalk(ctx) {
     state,
     fly: (on = true) => { setFly(!!on); return state(); },
     fits: (u, v, z) => fitsAt(new THREE.Vector3(sx(u), sy(z), sz(v))),
+    // высота пола под точкой (u, v) между отметками zTop и zBot (или null) — для анализа проходимости
+    ground(u, v, zTop, zBot, r = 0.12) { const g = collider?.groundAt(sx(u), sz(v), sy(zTop), sy(zBot), r); return g == null || g === -Infinity ? null : toZ(g); },
+    inside: (u, v, z) => !!collider?.insideAt(sx(u), sy(z), sz(v)),
     // что мешает встать в точке (u, v, z): треугольники в координатах здания
     blockers(u, v, z) {
       const p = new THREE.Vector3(sx(u), sy(z), sz(v));

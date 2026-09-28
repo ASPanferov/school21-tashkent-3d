@@ -97,8 +97,8 @@ export function renderPlan(sheet, { level, zones, conf, selected, onSelect }) {
   for (const d of B.DESKS.filter((q) => q.level === L.id)) {
     const col = B.CLUSTER_COLORS[d.cluster] || '#888';
     const a0 = Math.min(d.from, d.to), a1 = Math.max(d.from, d.to);
-    if (d.axis === 'v') parts.push(`<rect x="${d.at - 0.7}" y="${Y(a1)}" width="1.4" height="${a1 - a0}" fill="#fff" fill-opacity="0.92" stroke="${col}" stroke-width="0.12" pointer-events="none"/>`);
-    else parts.push(`<rect x="${a0}" y="${Y(d.at + 0.7)}" width="${a1 - a0}" height="1.4" fill="#fff" fill-opacity="0.92" stroke="${col}" stroke-width="0.12" pointer-events="none"/>`);
+    if (d.axis === 'v') parts.push(`<rect x="${d.at - 0.6}" y="${Y(a1)}" width="1.2" height="${a1 - a0}" fill="#fff" fill-opacity="0.92" stroke="${col}" stroke-width="0.12" pointer-events="none"/>`);
+    else parts.push(`<rect x="${a0}" y="${Y(d.at + 0.6)}" width="${a1 - a0}" height="1.2" fill="#fff" fill-opacity="0.92" stroke="${col}" stroke-width="0.12" pointer-events="none"/>`);
   }
 
   // марши
