@@ -1256,8 +1256,7 @@ function wardrobe(ctx, zn) {
   const { b, I, R, z } = ctx;
   const [u0, v0, u1, v1] = zn.rect;
   if (zn.id === 'l1-lockers') {
-    // по плану: два ряда шкафчиков поперёк, у лифтов — кресла-мешки, у двери в холл — столики
-    for (const v of [12.9, 15.5]) b.box('lockerGray', u0 + 0.9, v, z, u1 - 0.9, v + 0.5, z + 1.9);
+    // открытое пространство: у лифтов — кресла-мешки, у двери в холл — столики (рядов шкафчиков поперёк нет)
     const cols = ['#f08bb8', '#2f6fd1', '#63b84e', '#f2d64b'];
     cols.forEach((c, i) => I('beanbag', F.beanbagGeo, 'nylon').push(mtx(u0 + 1.3 + i * 1.3, v1 - 1.2, z, R() * 6), c));
     for (const [u, v] of [[38.3, 10.4], [40.9, 10.4]]) {
