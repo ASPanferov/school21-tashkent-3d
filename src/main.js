@@ -213,6 +213,10 @@ const TIMES = {
   eve: { az: 262, el: 6, sun: 2.5, sunColor: 0xffae6a, hemi: 0.3, exp: 1.0, emissive: 1.0, bloom: 0.32, glass: 0.8, env: 0.8, envInt: 0.85, win: 0.45,
     sky: { top: 0x33497f, horizon: 0xf2b387, bottom: 0x5a4b45, sun: 0xffc07a, glow: 2.2, clouds: 0.3, lit: 0xffc49a, shade: 0x7a6b86, stars: 0 },
     tree: 0x241e1c, ground: 0x4a3f3a, fog: 0xd9a47e },
+  // «синий час» для видео: солнце только что село, небо тёмно-синее с тёплой полосой у горизонта, окна горят
+  dusk: { az: 258, el: -4, sun: 0.0, sunColor: 0xff9a60, hemi: 0.26, exp: 1.12, emissive: 1.35, bloom: 0.55, glass: 0.58, env: 0.55, envInt: 0.85, win: 0.08,
+    sky: { top: 0x0a1535, horizon: 0x57609c, bottom: 0x1a1826, sun: 0xff7a45, glow: 0.6, clouds: 0.22, lit: 0x8a6a8e, shade: 0x1f2340, stars: 0.4 },
+    tree: 0x0a0c11, ground: 0x24222c, fog: 0x3a3a5a },
   night: { az: 210, el: -12, sun: 0.0, sunColor: 0x8fa8ff, hemi: 0.1, exp: 1.05, emissive: 1.6, bloom: 0.75, glass: 0.5, env: 0.35, envInt: 0.8, win: 0.02,
     sky: { top: 0x040811, horizon: 0x16223a, bottom: 0x0a0c12, sun: 0x000000, glow: 0, clouds: 0.18, lit: 0x1c2436, shade: 0x0e1320, stars: 0.9 },
     tree: 0x05070a, ground: 0x0c0d10, fog: 0x0b1222 },
@@ -368,15 +372,17 @@ function applyTime(t) {
   }
   bloom.enabled = T.bloom > 0;
   bloom.strength = T.bloom;
+  party?.setGlow?.(t);
   renderer.shadowMap.needsUpdate = true;
   document.querySelectorAll('#timeSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.id === { day: 't-day', eve: 't-eve', night: 't-night' }[t])));
 }
 
 // Отражения и рассеянный свет окружения: наружным материалам — небо, интерьерным — «комната».
 // (В three r170 materials.envMapIntensity работает только при явно заданном material.envMap.)
+const partyMats = new Set();
 function tuneEnv() {
   const T = TIMES[state.time];
-  for (const m of mats.cache.values()) {
+  for (const m of [...mats.cache.values(), ...partyMats]) {
     if (!m.isMeshStandardMaterial) continue;
     if (m.userData.env0 === undefined) m.userData.env0 = m.envMapIntensity ?? 1;
     const intr = m.userData.env === 'int';
@@ -824,6 +830,9 @@ function setParty(on) {
   if (on && !party) {
     party = buildParty({ hq: HQ });
     scene.add(party.group);
+    party.group.traverse((o) => { if (o.material?.isMeshStandardMaterial) partyMats.add(o.material); });
+    tuneEnv();
+    party.setGlow(state.time);
   }
   if (party) { party.group.visible = on; party.setCut(state.cut); }
   if (on) {

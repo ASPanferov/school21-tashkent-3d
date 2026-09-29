@@ -205,7 +205,7 @@ function confetti(areas, seed) {
 }
 
 // Баннер-плоскость: A→C по низу (u, v), лицом влево от A→C, от z0 до z1
-function banner(tex, A, C, z0, z1, off = 0.02) {
+function banner(tex, A, C, z0, z1, off = 0.02, glow = 0.18) {
   const du = C[0] - A[0], dv = C[1] - A[1], len = Math.hypot(du, dv);
   const g = new THREE.PlaneGeometry(len, z1 - z0);
   // плоскость смотрит в +Z сцены; поворачиваем так, чтобы нормаль = влево от A→C
@@ -213,8 +213,163 @@ function banner(tex, A, C, z0, z1, off = 0.02) {
   g.rotateY(Math.atan2(nu, -nv));
   const M = P((A[0] + C[0]) / 2 + nu * off, (A[1] + C[1]) / 2 + nv * off, (z0 + z1) / 2);
   g.translate(M.x, M.y, M.z);
-  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.18 }));
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: glow }));
   return m;
+}
+
+// ── Фольгированные цифры «2» и «1» (высота 1 в единицах формы, ширина по x) ──
+function digitShape(d) {
+  const s = new THREE.Shape();
+  if (d === '1') {
+    s.moveTo(0.14, 0); s.lineTo(0.4, 0); s.lineTo(0.4, 1); s.lineTo(0.24, 1); s.lineTo(0.0, 0.8);
+    s.lineTo(0.06, 0.66); s.lineTo(0.14, 0.72); s.lineTo(0.14, 0);
+  } else {
+    s.moveTo(0, 0); s.lineTo(0.66, 0); s.lineTo(0.66, 0.2); s.lineTo(0.31, 0.2);
+    s.bezierCurveTo(0.45, 0.33, 0.62, 0.45, 0.64, 0.66);
+    s.bezierCurveTo(0.66, 0.88, 0.52, 1.0, 0.33, 1.0);
+    s.bezierCurveTo(0.14, 1.0, 0.03, 0.88, 0.02, 0.72);
+    s.lineTo(0.22, 0.7);
+    s.bezierCurveTo(0.23, 0.78, 0.27, 0.81, 0.33, 0.81);
+    s.bezierCurveTo(0.4, 0.81, 0.45, 0.76, 0.45, 0.67);
+    s.bezierCurveTo(0.45, 0.55, 0.3, 0.42, 0.0, 0.17);
+    s.lineTo(0, 0);
+  }
+  return s;
+}
+// «21» из фольги: h — высота, стоит на полу в (u, v, z) лицом в сторону +u (читается слева направо по +v)
+function foil21(h, mat) {
+  const parts = [];
+  let x = 0;
+  for (const d of ['2', '1']) {
+    const g = new THREE.ExtrudeGeometry(digitShape(d), { depth: 0.1, bevelEnabled: true, bevelThickness: 0.09, bevelSize: 0.055, bevelSegments: 5, curveSegments: 18 });
+    g.translate(x, 0.055, 0);
+    parts.push(g);
+    x += d === '2' ? 0.78 : 0.5;
+  }
+  const g = mergeGeometries(parts);
+  g.translate(-x / 2, 0, -0.05);
+  g.scale(h, h, h);
+  g.rotateY(Math.PI / 2);                    // x формы → −Z сцены (+v), выдавливание → +X сцены (+u)
+  return new THREE.Mesh(g, mat);
+}
+// Трёхъярусный торт со свечами и «21» наверху, на круглом столе со скатертью
+function cake(u, v, z, fmat) {
+  const g = new THREE.Group();
+  const at = (o, dz) => { const p = P(u, v, z + dz); o.position.copy(p); g.add(o); return o; };
+  const cloth = new THREE.MeshStandardMaterial({ color: 0xf4f1ee, roughness: 0.85 });
+  at(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.56, 0.76, 40), cloth), 0.38);
+  at(new THREE.Mesh(new THREE.CylinderGeometry(0.565, 0.565, 0.1, 40, 1, true), new THREE.MeshStandardMaterial({ color: 0x2fd0b3, roughness: 0.6, side: THREE.DoubleSide })), 0.06);
+  const tiers = [[0.3, 0.16, 0xfbf4f0], [0.23, 0.15, 0xffd3e2], [0.16, 0.14, 0xfbf4f0]];
+  let h = 0.76;
+  for (const [r, th, c] of tiers) {
+    at(new THREE.Mesh(new THREE.CylinderGeometry(r, r, th, 40), new THREE.MeshStandardMaterial({ color: c, roughness: 0.55 })), h + th / 2);
+    at(new THREE.Mesh(new THREE.TorusGeometry(r, 0.014, 8, 40).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2fd0b3, roughness: 0.4 })), h + 0.02);
+    h += th;
+  }
+  const wax = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+  const flame = new THREE.MeshStandardMaterial({ color: 0xffc46b, emissive: 0xffa64a, emissiveIntensity: 3.2 });
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2, r = 0.2;
+    const cu = u + Math.cos(a) * r, cv = v + Math.sin(a) * r;
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.09, 8), wax); c.position.copy(P(cu, cv, z + 0.76 + 0.16 + 0.045)); g.add(c);
+    const f = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6).scale(1, 1.8, 1), flame); f.position.copy(P(cu, cv, z + 0.76 + 0.16 + 0.1)); g.add(f);
+  }
+  const top = foil21(0.16, fmat);
+  top.position.copy(P(u, v, z + h + 0.01)); g.add(top);
+  return g;
+}
+// Подарки: коробки с лентами крест-накрест
+function gifts(list) {
+  const g = new THREE.Group();
+  for (const [u, v, z, w, d, hh, col, rib] of list) {
+    const box = new THREE.Mesh(new THREE.BoxGeometry(w, hh, d), new THREE.MeshStandardMaterial({ color: col, roughness: 0.45 }));
+    box.position.copy(P(u, v, z + hh / 2)); g.add(box);
+    const rm = new THREE.MeshStandardMaterial({ color: rib, roughness: 0.35, metalness: 0.2 });
+    for (const [a, b] of [[w + 0.004, 0.05], [0.05, d + 0.004]]) {
+      const r = new THREE.Mesh(new THREE.BoxGeometry(a, hh + 0.004, b), rm); r.position.copy(P(u, v, z + hh / 2)); g.add(r);
+    }
+    const bw = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.018, 8, 16), rm);
+    bw.position.copy(P(u, v, z + hh + 0.04)); bw.rotation.y = 0.6; g.add(bw);
+  }
+  return g;
+}
+// Гирлянда-огоньки: тёплые точки по провисающим дугам (a → b, провис sag), шаг step
+function fairy(lines, step = 0.11) {
+  const pts = [];
+  for (const [a, b, sag] of lines) {
+    const A = P(...a), Bp = P(...b), n = Math.max(2, Math.round(A.distanceTo(Bp) / step));
+    for (let i = 0; i <= n; i++) { const t = i / n, p = A.clone().lerp(Bp, t); p.y -= sag * 4 * t * (1 - t); pts.push(p); }
+  }
+  const mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.016, 6, 4), new THREE.MeshStandardMaterial({ color: 0xffe2b0, emissive: 0xffc27a, emissiveIntensity: 2.6 }), pts.length);
+  const m4 = new THREE.Matrix4();
+  pts.forEach((p, i) => { m4.makeTranslation(p.x, p.y, p.z); mesh.setMatrixAt(i, m4); });
+  mesh.computeBoundingSphere();
+  return mesh;
+}
+
+// ── Цветная подсветка фасада: аддитивные «мазки света» снизу вверх (без настоящих источников) ──
+function washTexture() {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 256;
+  const g = c.getContext('2d');
+  const img = g.createImageData(64, 256);
+  for (let y = 0; y < 256; y++) for (let x = 0; x < 64; x++) {
+    const h = 1 - y / 255, w = 1 - Math.abs(x - 31.5) / 32;
+    const a = Math.pow(Math.max(0, h), 1.6) * Math.pow(Math.max(0, w), 0.8) * (0.55 + 0.45 * Math.exp(-((1 - h) * 7)));
+    const i = (y * 64 + x) * 4; img.data[i] = img.data[i + 1] = img.data[i + 2] = 255; img.data[i + 3] = Math.round(255 * Math.min(1, a));
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function washes(list) {
+  const tex = washTexture(), g = new THREE.Group(), mats = [];
+  for (const [u0, u1, v, z0, z1, col] of list) {
+    const m = new THREE.MeshBasicMaterial({ map: tex, color: col, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    m.userData.baseOpacity = 0.6; mats.push(m);
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(u1 - u0, z1 - z0), m);
+    pl.position.copy(P((u0 + u1) / 2, v, (z0 + z1) / 2));
+    // PlaneGeometry смотрит в +Z сцены, то есть в −v — на площадь
+    pl.renderOrder = 2;
+    g.add(pl);
+  }
+  g.userData.mats = mats;
+  return g;
+}
+
+// ── Падающее конфетти в зале: точки-«бумажки» медленно кружатся и падают, внизу возвращаются под потолок ──
+class ConfettiRain {
+  constructor(rect, z0, z1, n) {
+    this.rect = rect; this.z0 = z0; this.z1 = z1; this.n = n; this.R = rng(612);
+    const pos = this.pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+    this.ph = new Float32Array(n); this.sp = new Float32Array(n);
+    const c = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+      this.spawn(i, z0 + this.R() * (z1 - z0));
+      c.set(PAL[i % PAL.length]); col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+      this.ph[i] = this.R() * 6.28; this.sp[i] = 0.45 + this.R() * 0.5;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    this.points = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.038, vertexColors: true, sizeAttenuation: true }));
+    this.points.frustumCulled = false;
+    this.t = 0;
+  }
+  spawn(i, z) {
+    const [u0, v0, u1, v1] = this.rect, p = P(u0 + this.R() * (u1 - u0), v0 + this.R() * (v1 - v0), z);
+    this.pos[i * 3] = p.x; this.pos[i * 3 + 1] = p.y; this.pos[i * 3 + 2] = p.z;
+  }
+  update(dt) {
+    this.t += dt;
+    const { pos, n, ph, sp } = this, yb = sy(this.z0);
+    for (let i = 0; i < n; i++) {
+      const k = i * 3, w = this.t * 2.2 + ph[i];
+      pos[k] += Math.cos(w) * 0.35 * dt; pos[k + 2] += Math.sin(w * 0.8) * 0.35 * dt;
+      pos[k + 1] -= sp[i] * (0.75 + 0.25 * Math.sin(w * 1.7)) * dt;
+      if (pos[k + 1] < yb) this.spawn(i, this.z1);
+    }
+    this.points.geometry.attributes.position.needsUpdate = true;
+  }
 }
 
 // ── Фейерверк: пул частиц, ракеты взлетают и раскрываются шарами искр ──
@@ -235,6 +390,7 @@ class Fireworks {
     this.cols = ['#ffd34d', '#2fd0b3', '#ff5fa2', '#8f7bff', '#ffffff', '#ff5a3a', '#6dff8a'].map((c) => new THREE.Color(c));
     this.cfg = { speed: 1, radius: [25, 80], height: [34, 74] };
     this.baseSize = this.points.material.size;
+    this.onBurst = null;                                   // для съёмки: звук взрывов по кадрам
   }
   // настройка для съёмки: крупнее и ближе к зданию
   set({ size = 1, speed = 1, radius = [25, 80], height = [34, 74] } = {}) { this.points.material.size = this.baseSize * size; this.cfg = { speed, radius, height }; }
@@ -253,19 +409,25 @@ class Fireworks {
     this.burstCol[k] = c.r; this.burstCol[k + 1] = c.g; this.burstCol[k + 2] = c.b;
   }
   burst(x, y, z, r0, g0, b0) {
+    this.onBurst?.(x, y, z);
     const R = this.R, n = 130 + Math.floor(R() * 90), sp = (10 + R() * 6) * this.cfg.speed, ring = R() < 0.25;
     const two = R() < 0.35 ? this.cols[Math.floor(R() * this.cols.length)] : null;
+    // кольцо — в наклонной вертикальной плоскости (плашмя оно выглядит сбоку как светящаяся плашка)
+    const yaw = R() * Math.PI * 2, tilt = (R() - 0.5) * 0.9, cy = Math.cos(yaw), sy2 = Math.sin(yaw), ct = Math.cos(tilt), st = Math.sin(tilt);
     for (let j = 0; j < n; j++) {
       const i = this.alloc(), k = i * 3;
       let dx, dy, dz;
-      if (ring) { const a = (j / n) * Math.PI * 2; dx = Math.cos(a); dy = (R() - 0.5) * 0.15; dz = Math.sin(a); }
+      if (ring) {
+        const a = (j / n) * Math.PI * 2, x = Math.cos(a), y = Math.sin(a) * ct, z = Math.sin(a) * st + (R() - 0.5) * 0.08;
+        dx = x * cy - z * sy2; dy = y; dz = x * sy2 + z * cy;
+      }
       else { const u = R() * 2 - 1, a = R() * Math.PI * 2, s = Math.sqrt(1 - u * u); dx = s * Math.cos(a); dy = u; dz = s * Math.sin(a); }
-      const v = sp * (0.85 + R() * 0.3);
-      this.pos[k] = x; this.pos[k + 1] = y; this.pos[k + 2] = z;
+      const v = sp * (0.85 + R() * 0.3), off = 0.25 + R() * 0.45;     // старт из небольшой сферы, а не из точки
+      this.pos[k] = x + dx * off; this.pos[k + 1] = y + dy * off; this.pos[k + 2] = z + dz * off;
       this.vel[k] = dx * v; this.vel[k + 1] = dy * v; this.vel[k + 2] = dz * v;
       this.age[i] = 0; this.life[i] = 1.5 + R() * 1.0; this.rocket[i] = 0;
       const c = two && j % 2 ? two : null;
-      this.base[k] = (c ? c.r : r0) * 2.4; this.base[k + 1] = (c ? c.g : g0) * 2.4; this.base[k + 2] = (c ? c.b : b0) * 2.4;
+      this.base[k] = (c ? c.r : r0) * 2.0; this.base[k + 1] = (c ? c.g : g0) * 2.0; this.base[k + 2] = (c ? c.b : b0) * 2.0;
     }
   }
   update(dt, rate = 1) {
@@ -289,7 +451,7 @@ class Fireworks {
       pos[k] += vel[k] * dt; pos[k + 1] += vel[k + 1] * dt; pos[k + 2] += vel[k + 2] * dt;
       const f = 1 - age[i] / life[i];
       const fl = f < 0.45 ? 0.45 + R() * 0.8 : 1;
-      const a = f * f * fl;
+      const a = f * f * fl * Math.min(1, age[i] / 0.18) ** 2;   // вспышка разгорается, пока искры не разлетелись
       col[k] = base[k] * a; col[k + 1] = base[k + 1] * a; col[k + 2] = base[k + 2] * a;
     }
     this.points.geometry.attributes.position.needsUpdate = true;
@@ -299,6 +461,7 @@ class Fireworks {
 
 export function buildParty({ hq = true } = {}) {
   const R = rng(2110);
+  let rain = null;
   const root = new THREE.Group();
   root.name = 'party';
   root.userData.noCollide = true;
@@ -362,12 +525,121 @@ export function buildParty({ hq = true } = {}) {
   const plat = [...bunch([14.2, 24.6, 3.3], 7, 1.3, R), ...bunch([14.2, 28.0, 3.3], 7, 1.3, R)];
   add('M', balloons(plat, 0.28, bmat, smat, hq, 17));
 
+  // ── Ивент-холл 1 этажа (общий зал): рамка из шаров вокруг экрана, «21» из фольги, торт и подарки,
+  // шары под потолком, флажки зигзагом, гирлянды-огоньки, поздравление на экране и телевизорах ──
+  const hall = B.ZONES.find((z) => z.id === 'l1-conf');
+  if (hall) {
+    const [hu0, hv0, hu1, hv1] = hall.rect, htop = B.LEVELS.find((l) => l.id === 'L1').top;
+    const su = hu0 + 0.39, sv0 = 5.8, sv1 = 10.8, sz0 = 0.6, sz1 = 3.15;       // LED-экран на ЮЗ стене
+    const slide = ART.birthdaySlide();
+    add('L1', banner(slide, [su + 0.012, sv1], [su + 0.012, sv0], sz0, sz1, 0, 0.95));
+    for (const v of [6.6, 12.6]) add('L1', banner(slide, [18.6 + 0.35 + 0.066, v + 0.56], [18.6 + 0.35 + 0.066, v - 0.56], 2.3, 2.95, 0, 0.95));
+    // рамка-гирлянда: от пола вверх по краю экрана, аркой над ним и вниз
+    const G = [];
+    const path = [];
+    const gl = sv0 - 0.75, gr = sv1 + 0.75, gtop = 3.62;
+    for (let z = 0.15; z < gtop - 0.3; z += 0.06) path.push([gl, z]);
+    for (let a = Math.PI; a >= 0; a -= 0.02) path.push([(gl + gr) / 2 + Math.cos(a) * (gr - gl) / 2, gtop - 0.3 + Math.sin(a) * 0.3 + (1 - Math.abs(Math.cos(a))) * 0.02]);
+    for (let z = gtop - 0.3; z > 0.15; z -= 0.06) path.push([gr, z]);
+    const FR = ['#2fd0b3', '#ffffff', '#8f5bff', '#ffc83d', '#2fd0b3', '#ffffff', '#b8a6ff'];
+    for (let i = 0; i < path.length; i += 2) {
+      const [v, z] = path[i];
+      for (let k = 0; k < 2; k++) {
+        const r = 0.09 + R() * 0.16;
+        G.push({ p: P(hu0 + 0.62 + R() * 0.34, v + (R() - 0.5) * 0.34, z + (R() - 0.5) * 0.3), c: FR[Math.floor(R() * FR.length)], string: false, s: r / 0.28 });
+      }
+    }
+    add('L1', balloons(G, 0.28, bmat, smat, hq, 41));
+    // «21» из фольги слева от экрана (со стороны зала), торт по центру перед экраном, подарки справа
+    const gold = new THREE.MeshStandardMaterial({ color: 0xf2c86a, metalness: 1, roughness: 0.2, envMapIntensity: 1.2 });
+    const num = foil21(1.55, gold);
+    num.position.copy(P(hu0 + 1.35, 3.1, 0.02));
+    add('L1', num);
+    add('L1', cake(hu0 + 2.95, (sv0 + sv1) / 2, 0, gold));
+    add('L1', gifts([
+      [hu0 + 1.3, 12.2, 0, 0.5, 0.5, 0.42, 0x8f5bff, 0xffc83d], [hu0 + 1.85, 12.55, 0, 0.36, 0.36, 0.3, 0x2fd0b3, 0xffffff],
+      [hu0 + 1.25, 12.8, 0, 0.3, 0.3, 0.26, 0xff5fa2, 0xffffff], [hu0 + 1.3, 12.2, 0.42, 0.3, 0.3, 0.24, 0xffc83d, 0x8f5bff],
+      [hu0 + 2.35, 12.1, 0, 0.28, 0.28, 0.22, 0xffffff, 0xff5fa2],
+    ]));
+    // шары под потолком с нитками
+    const ceil = [];
+    for (let i = 0; i < (hq ? 110 : 60); i++) {
+      const u = hu0 + 3.4 + R() * (hu1 - hu0 - 3.9), v = hv0 + 0.5 + R() * (hv1 - hv0 - 1.0);
+      ceil.push({ p: P(u, v, htop - 0.42 - R() * 0.22), c: PAL[Math.floor(R() * PAL.length)], len: 1.1 + R() * 0.9 });
+    }
+    add('L1', balloons(ceil, 0.28, bmat, smat, hq, 42));
+    // связки у колонн и у кресел вдоль прохода
+    const hb = [];
+    for (const [u, v] of [[18.6, 6.6], [18.6, 12.6], [24.6, 6.6], [24.6, 12.6]]) hb.push(...bunch([u + 0.42, v - 0.42, 1.0], 6, 1.5, R, 0.45));
+    for (const u of [18.1, 22.9, 27.6]) hb.push(...bunch([u, 8.02, 0.85], 3, 1.1, R, 0.25, 0.24), ...bunch([u, 8.58, 0.85], 3, 1.1, R, 0.25, 0.24));
+    add('L1', balloons(hb, 0.28, bmat, smat, hq, 43));
+    // флажки зигзагом через весь зал и огоньки: занавес по бокам экрана и дуги по стенам
+    add('L1', bunting([[[hu0 + 1.2, hv0 + 0.6, htop - 0.3], [19.6, hv1 - 0.5, htop - 0.3], 0.5], [[19.6, hv1 - 0.5, htop - 0.3], [25.0, hv0 + 0.6, htop - 0.3], 0.5],
+      [[25.0, hv0 + 0.6, htop - 0.3], [hu1 - 0.4, hv1 - 0.5, htop - 0.3], 0.5]], hq, 44));
+    const fl = [];
+    for (const [a, b] of [[3.55, sv0 - 1.05], [sv1 + 1.05, 13.25]]) for (let v = a; v <= b + 1e-6; v += 0.24) fl.push([[su - 0.04, v, htop - 0.12], [su - 0.04, v, 0.35], 0]);
+    for (let v = hv0 + 0.4; v < hv1 - 0.6; v += 1.6) {
+      fl.push([[hu1 - 0.25, v, htop - 0.15], [hu1 - 0.25, v + 1.6, htop - 0.15], 0.32]);
+      fl.push([[su - 0.02, v, htop - 0.08], [su - 0.02, v + 1.6, htop - 0.08], 0.22]);
+    }
+    add('L1', fairy(fl));
+    add('L1', confetti([{ rect: [hu0 + 0.5, hv0 + 0.3, hu1 - 0.3, hv1 - 0.3], z: 0, n: hq ? 1400 : 700 }], 45));
+    rain = new ConfettiRain([hu0 + 0.6, hv0 + 0.5, hu1 - 0.4, hv1 - 0.4], 0.05, htop - 0.15, hq ? 2200 : 1000);
+    add('L1', rain.points);
+    // вход из фойе: арка из шаров вокруг двустворчатой двери и связки по сторонам
+    const door = B.DOORS.find((d) => d.level === 'L1' && Math.abs(d.at[0] - hu1) < 0.05 && d.kind === 'double');
+    if (door) {
+      const dv = door.at[1], hw = door.w / 2 + 0.35, dh = 2.62, da = [];
+      for (let a = 0; a <= Math.PI + 1e-6; a += Math.PI / 30) {
+        const v = dv + Math.cos(a) * hw, z = dh - 0.42 + Math.sin(a) * 0.55;
+        for (let k = 0; k < 3; k++) da.push({ p: P(hu1 + 0.3 + R() * 0.2, v + (R() - 0.5) * 0.24, z + (R() - 0.5) * 0.24), c: FR[Math.floor(R() * FR.length)], string: false, s: (0.12 + R() * 0.12) / 0.28 });
+      }
+      for (let z = 0.15; z < dh - 0.42; z += 0.12) for (const v of [dv - hw, dv + hw]) for (let k = 0; k < 2; k++) {
+        da.push({ p: P(hu1 + 0.3 + R() * 0.2, v + (R() - 0.5) * 0.24, z + (R() - 0.5) * 0.1), c: FR[Math.floor(R() * FR.length)], string: false, s: (0.11 + R() * 0.12) / 0.28 });
+      }
+      add('L1', balloons(da, 0.28, bmat, smat, hq, 46));
+      add('L1', balloons([...bunch([hu1 + 1.6, dv - 2.2, 0.4], 7, 1.8, R, 0.5), ...bunch([hu1 + 1.4, dv + 0.9, 0.4], 5, 1.6, R, 0.4)], 0.28, bmat, smat, hq, 47));
+    }
+  }
+
+  // ── Амфитеатр: поздравление на экране, связки у парапета кольца, шары под площадкой, флажки ──
+  {
+    const A = B.AMPHI, [[x0, y0], [x1, y1]] = A.screen, C = A.c;
+    const L = Math.hypot(x1 - x0, y1 - y0), dx = (x1 - x0) / L, dy = (y1 - y0) / L, mu = (x0 + x1) / 2, mv = (y0 + y1) / 2;
+    add('B1', banner(ART.birthdaySlide(), [mu - dx * 2.2, mv - dy * 2.2], [mu + dx * 2.2, mv + dy * 2.2], A.stageZ + 0.95, A.stageZ + 3.35, 0.185, 0.95));
+    const inside = (u, v) => u > A.clip.u + 0.3 && v > A.clip.v + 0.3;
+    const ring = [];
+    for (let a = -18; a <= 118; a += 17) {
+      const r = A.walk[1] - 0.2, u = C[0] + Math.cos((a * Math.PI) / 180) * r, v = C[1] + Math.sin((a * Math.PI) / 180) * r;
+      if (inside(u, v)) ring.push(...bunch([u, v, A.walkZ + 1.05], 5, 1.0, R, 0.4, 0.26));
+    }
+    // связки по краям проходов-лестниц: на каждом втором ряду, с двух сторон прохода
+    const aisle = [];
+    const [au, av] = A.aisles;
+    for (let k = 0; k < A.rows.length - 1; k += 2) {
+      const rm = (A.rows[k] + A.rows[k + 1]) / 2, zt = A.stageZ + A.rowRise * (k + 1);
+      // вдоль одного прохода (второй остаётся свободным — по нему удобно подниматься к кольцу)
+      for (const side of [-1, 1]) aisle.push(...bunch([C[0] + rm, side < 0 ? av.from - 0.22 : av.to + 0.22, zt + 0.1], 3, 1.0, R, 0.22, 0.24));
+      void au;
+    }
+    add('B1', balloons([...ring, ...aisle], 0.28, bmat, smat, hq, 51));
+    const bz = B.PLATFORM.z - 0.5;
+    add('B1', bunting([[[14.3, 22.9, bz], [22.6, 30.8, bz], 0.45], [[16.9, 20.6, bz], [25.6, 25.4, bz], 0.4]], hq, 52));
+  }
+
   // флажки: над атриумом по диагоналям на уровне парапетов 2 этажа, по краю козырька,
   // между колоннами площадки и под пирамидой лаунжа
   add('atr', bunting([[[12.9, 18.9, 7.4], [30.3, 36.3, 7.4], 0.8], [[12.9, 36.3, 7.4], [30.3, 18.9, 7.4], 0.8]], hq, 21));
   add('ext', bunting([[[41.9, -6.75, 3.25], [55.0, -6.75, 3.25], 0.45]], hq, 22));
   add('roof', bunting([[[SK.u0 + 0.6, SK.v0 + 0.6, 16.9], [SK.u1 - 0.6, SK.v1 - 0.6, 16.9], 1.3], [[SK.u0 + 0.6, SK.v1 - 0.6, 16.9], [SK.u1 - 0.6, SK.v0 + 0.6, 16.9], 1.3]], hq, 24));
 
+  // цветная подсветка главного фасада: башня — бирюзой, рама портала и угол — фиолетовым и розовым
+  const wash = washes([
+    [35.1, 38.3, -0.26, -1.4, 10.5, 0x2fd0b3], [38.9, 42.1, -0.26, -1.4, 10.5, 0x2fd0b3],
+    [16.1, 18.5, -0.06, -1.4, 9.5, 0x8f5bff], [32.6, 35.0, -0.06, -1.4, 9.5, 0xff5fa2],
+    [0.0, 1.3, -0.32, -1.4, 9.0, 0x8f5bff], [8.4, 11.2, -0.06, -1.4, 7.5, 0x3d8bff],
+  ]);
+  add('ext', wash);
   // конфетти
   const far = (u, v) => Math.hypot(u - B.AMPHI.c[0], v - B.AMPHI.c[1]) < B.AMPHI.walk[1] + 0.8;
   add('ext', confetti([
@@ -385,6 +657,8 @@ export function buildParty({ hq = true } = {}) {
   add('atr', banner(ART.birthdayBanner({ oneLine: true }), [13.6, 18.95], [25.6, 18.95], 4.52, 5.62, 0.01));
 
   for (const [k, g] of Object.entries(parts)) { g.name = `party-${k}`; root.add(g); }
+  const outside = new Set(['roof', 'band3', 'ext']);
+  for (const [k, g] of Object.entries(parts)) g.traverse((o) => { if (o.material && !outside.has(k)) o.material.userData.env = 'int'; });
   root.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
   parts.roof.traverse((o) => { if (o.isMesh && !o.isInstancedMesh) o.castShadow = true; });
 
@@ -393,8 +667,11 @@ export function buildParty({ hq = true } = {}) {
 
   return {
     group: root,
-    update(dt, rate = 1) { fw.update(dt, rate); },
+    update(dt, rate = 1) { fw.update(dt, rate); if (rain?.points.parent?.visible) rain.update(dt); },
     setFireworks(o) { fw.set(o); },
+    onBurst(fn) { fw.onBurst = fn; },
+    // сила подсветки фасада по времени суток: днём не видна
+    setGlow(t) { const k = { day: 0, eve: 0.45, dusk: 0.9, night: 1 }[t] ?? 1; for (const m of wash.userData.mats) { m.opacity = m.userData.baseOpacity * k; m.visible = k > 0; } },
     setCut(cut) {
       const ci = cut ? ORDER.indexOf(cut) : ORDER.length;
       const show = { roof: !cut, band3: !cut || ci >= 4, ext: cut !== 'B1', L1: ci >= 1, M: ci >= 2, atr: ci >= 3, L3: ci >= 4, B1: true };

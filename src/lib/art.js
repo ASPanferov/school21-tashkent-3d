@@ -598,3 +598,53 @@ export function birthdayBanner({ oneLine = false } = {}) {
   ctx.strokeStyle = '#ffd34d'; ctx.lineWidth = oneLine ? 8 : 14; ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, W - ctx.lineWidth, H - ctx.lineWidth);
   return tex(c);
 }
+
+// Слайд для LED-экрана ивент-холла в режиме «Праздник»: 2:1, крупное поздравление, серпантин и шары
+export function birthdaySlide() {
+  const W = 2048, H = 1024;
+  const [c, ctx] = canvas(W, H);
+  const r = rng(2610);
+  const g = ctx.createRadialGradient(W * 0.5, H * 0.42, 60, W * 0.5, H * 0.5, W * 0.62);
+  g.addColorStop(0, '#3b2bb0'); g.addColorStop(0.55, '#1c1f66'); g.addColorStop(1, '#0b0d2e');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const cols = ['#2fd0b3', '#ffd34d', '#ff5fa2', '#7fb6ff', '#ffffff', '#ff8a3d', '#b28bff'];
+  // серпантин
+  ctx.lineWidth = 7; ctx.lineCap = 'round';
+  for (let i = 0; i < 26; i++) {
+    const x = r() * W, y = r() * H * 0.9, a = r() * 6.28, L = 90 + r() * 160;
+    ctx.strokeStyle = cols[i % cols.length]; ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    for (let k = 1; k <= 12; k++) ctx.lineTo(x + Math.cos(a) * L * k / 12 + Math.sin(k * 1.3) * 16, y + Math.sin(a) * L * k / 12 + Math.cos(k * 1.3) * 16);
+    ctx.stroke();
+  }
+  // конфетти
+  for (let i = 0; i < 520; i++) {
+    ctx.save(); ctx.translate(r() * W, r() * H); ctx.rotate(r() * 6.28);
+    ctx.fillStyle = cols[Math.floor(r() * cols.length)]; ctx.globalAlpha = 0.3 + r() * 0.6;
+    if (r() < 0.55) ctx.fillRect(-9, -4, 18, 8); else { ctx.beginPath(); ctx.arc(0, 0, 5 + r() * 5, 0, 6.28); ctx.fill(); }
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  // шары по углам
+  const balloon = (x, y, rad, col) => {
+    const bg = ctx.createRadialGradient(x - rad * 0.35, y - rad * 0.45, rad * 0.1, x, y, rad * 1.1);
+    bg.addColorStop(0, '#ffffff'); bg.addColorStop(0.25, col); bg.addColorStop(1, col);
+    ctx.fillStyle = bg; ctx.beginPath(); ctx.ellipse(x, y, rad, rad * 1.16, 0, 0, 6.28); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y + rad * 1.16);
+    ctx.quadraticCurveTo(x + 30, y + rad * 2.2, x - 10, y + rad * 3.4); ctx.stroke();
+  };
+  for (const [x, y, rad, col] of [[150, 200, 92, '#2fd0b3'], [290, 150, 78, '#ffd34d'], [230, 330, 70, '#ff5fa2'], [W - 160, 190, 94, '#8f5bff'], [W - 300, 140, 76, '#2fd0b3'], [W - 240, 330, 72, '#ffd34d']]) balloon(x, y, rad, col);
+  // знак и поздравление — в верхних двух третях: снизу экран закрывают торт и гирлянда
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  const m = 150, mx = W / 2 - m / 2, my = 70;
+  ctx.fillStyle = '#2fd0b3'; rr(ctx, mx, my, m, m, m * 0.2); ctx.fill();
+  ctx.fillStyle = '#10163a'; ctx.font = `700 ${Math.round(m * 0.6)}px "Unbounded", "Onest", sans-serif`; ctx.textBaseline = 'middle';
+  ctx.fillText('21', W / 2, my + m * 0.53);
+  ctx.textBaseline = 'alphabetic';
+  ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 24;
+  ctx.fillStyle = '#ffffff'; ctx.font = '700 142px "Unbounded", "Onest", sans-serif'; ctx.fillText('С ДНЁМ РОЖДЕНИЯ,', W / 2, 408);
+  ctx.fillStyle = '#2fd0b3'; ctx.font = '700 196px "Unbounded", "Onest", sans-serif'; ctx.fillText('SCHOOL 21!', W / 2, 608);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#ffd34d'; ctx.font = '600 62px "Onest", sans-serif'; ctx.fillText('2 года кампусу в Ташкенте', W / 2, 712);
+  return tex(c);
+}
