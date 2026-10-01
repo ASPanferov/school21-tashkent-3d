@@ -372,6 +372,37 @@ class ConfettiRain {
   }
 }
 
+// ── Лучи прожекторов: конусы с аддитивным градиентом, концы гуляют по сцене ──
+function beamTexture() {
+  const c = document.createElement('canvas'); c.width = 4; c.height = 128;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 128);
+  gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 128);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function lightBeams(src, z, colors, aim) {
+  const group = new THREE.Group(), tex = beamTexture(), items = [];
+  src.forEach(([u, v], i) => {
+    const len = 16, geo = new THREE.ConeGeometry(1.1, len, 24, 1, true);
+    geo.translate(0, -len / 2, 0);                    // вершина в начале координат, конус вниз по −Y
+    geo.rotateX(-Math.PI / 2);                        // ось вдоль −Z: удобно для lookAt
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: colors[i % colors.length], map: tex, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+    m.position.copy(P(u, v, z));
+    m.renderOrder = 3;
+    group.add(m); items.push({ m, ph: i * 1.7, v });
+  });
+  const tgt = new THREE.Vector3();
+  return {
+    group,
+    update(t) {
+      for (const it of items) {
+        tgt.copy(P(aim[0] + 1.4 * Math.sin(t * 0.5 + it.ph), aim[1] + 3.2 * Math.sin(t * 0.37 + it.ph * 1.3), 1.2 + 0.8 * Math.sin(t * 0.61 + it.ph)));
+        it.m.lookAt(tgt); it.m.rotateY(Math.PI);        // lookAt направляет +Z, а конус смотрит в −Z
+      }
+    },
+  };
+}
+
 // ── Фейерверк: пул частиц, ракеты взлетают и раскрываются шарами искр ──
 class Fireworks {
   constructor(hq) {
@@ -461,7 +492,8 @@ class Fireworks {
 
 export function buildParty({ hq = true } = {}) {
   const R = rng(2110);
-  let rain = null;
+  let rain = null, beams = null, tt = 0;
+  const screen = ART.birthdayScreen({ live: hq });
   const root = new THREE.Group();
   root.name = 'party';
   root.userData.noCollide = true;
@@ -531,9 +563,21 @@ export function buildParty({ hq = true } = {}) {
   if (hall) {
     const [hu0, hv0, hu1, hv1] = hall.rect, htop = B.LEVELS.find((l) => l.id === 'L1').top;
     const su = hu0 + 0.39, sv0 = 5.8, sv1 = 10.8, sz0 = 0.6, sz1 = 3.15;       // LED-экран на ЮЗ стене
-    const slide = ART.birthdaySlide();
-    add('L1', banner(slide, [su + 0.012, sv1], [su + 0.012, sv0], sz0, sz1, 0, 0.95));
-    for (const v of [6.6, 12.6]) add('L1', banner(slide, [18.6 + 0.35 + 0.066, v + 0.56], [18.6 + 0.35 + 0.066, v - 0.56], 2.3, 2.95, 0, 0.95));
+    add('L1', banner(screen.texture, [su + 0.012, sv1], [su + 0.012, sv0], sz0, sz1, 0, 1.0));
+    for (const v of [6.6, 12.6]) add('L1', banner(screen.texture, [18.6 + 0.35 + 0.066, v + 0.56], [18.6 + 0.35 + 0.066, v - 0.56], 2.3, 2.95, 0, 1.0));
+    // трибуна ведущего со знаком «21»
+    const lec = new THREE.Group();
+    const lb = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.12, 0.45), new THREE.MeshStandardMaterial({ color: 0x15161a, roughness: 0.5 }));
+    lb.position.y = 0.56; lec.add(lb);
+    const lt = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.04, 0.52), new THREE.MeshStandardMaterial({ color: 0x2b2d33, roughness: 0.4 }));
+    lt.position.y = 1.14; lt.rotation.x = -0.12; lec.add(lt);
+    const lp = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshStandardMaterial({ map: ART.logo21Texture(), emissive: 0xffffff, emissiveMap: ART.logo21Texture(), emissiveIntensity: 0.6, transparent: true }));
+    lp.position.set(0, 0.72, 0.226); lec.add(lp);
+    lec.position.copy(P(hu0 + 2.35, 5.5, 0)); lec.rotation.y = Math.PI / 2;
+    add('L1', lec);
+    // лучи прожекторов из-под потолка у задней стены — медленно гуляют по сцене
+    beams = lightBeams([[hu1 - 2.6, 2.4], [hu1 - 2.6, 6.2], [hu1 - 2.6, 10.4], [hu1 - 2.6, 14.0]], htop - 0.2, ['#2fd0b3', '#b28bff', '#ff5fa2', '#ffd34d'], [hu0 + 1.2, (sv0 + sv1) / 2]);
+    add('L1', beams.group);
     // рамка-гирлянда: от пола вверх по краю экрана, аркой над ним и вниз
     const G = [];
     const path = [];
@@ -606,7 +650,7 @@ export function buildParty({ hq = true } = {}) {
   {
     const A = B.AMPHI, [[x0, y0], [x1, y1]] = A.screen, C = A.c;
     const L = Math.hypot(x1 - x0, y1 - y0), dx = (x1 - x0) / L, dy = (y1 - y0) / L, mu = (x0 + x1) / 2, mv = (y0 + y1) / 2;
-    add('B1', banner(ART.birthdaySlide(), [mu - dx * 2.2, mv - dy * 2.2], [mu + dx * 2.2, mv + dy * 2.2], A.stageZ + 0.95, A.stageZ + 3.35, 0.185, 0.95));
+    add('B1', banner(screen.texture, [mu - dx * 2.2, mv - dy * 2.2], [mu + dx * 2.2, mv + dy * 2.2], A.stageZ + 0.95, A.stageZ + 3.35, 0.185, 1.0));
     const inside = (u, v) => u > A.clip.u + 0.3 && v > A.clip.v + 0.3;
     const ring = [];
     for (let a = -18; a <= 118; a += 17) {
@@ -667,7 +711,12 @@ export function buildParty({ hq = true } = {}) {
 
   return {
     group: root,
-    update(dt, rate = 1) { fw.update(dt, rate); if (rain?.points.parent?.visible) rain.update(dt); },
+    update(dt, rate = 1) {
+      tt += dt;
+      fw.update(dt, rate);
+      if (rain?.points.parent?.visible) { rain.update(dt); beams?.update(tt); }
+      screen.update(tt);
+    },
     setFireworks(o) { fw.set(o); },
     onBurst(fn) { fw.onBurst = fn; },
     // сила подсветки фасада по времени суток: днём не видна

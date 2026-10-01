@@ -648,3 +648,91 @@ export function birthdaySlide() {
   ctx.fillStyle = '#ffd34d'; ctx.font = '600 62px "Onest", sans-serif'; ctx.fillText('2 года кампусу в Ташкенте', W / 2, 712);
   return tex(c);
 }
+
+// Живой LED-экран для праздника: три слайда по кругу (поздравление, «2 года» с фактами, «спасибо»),
+// пиксельный знак «21» как у логотипа на фасаде, плавающие пятна света, конфетти и сетка светодиодов.
+// Возвращает { texture, update(t) } — перерисовка ~20 раз в секунду, на слабых устройствах — один кадр.
+const PIX2 = [[0.22, 0, 3.0, 1.0], [3.0, 0.92, 4.0, 1.92], [0.94, 1.92, 3.0, 2.92], [0.0, 2.9, 0.94, 3.86], [0.94, 3.84, 4.0, 5.0]];
+const PIX1 = [[4.5, 0, 5.45, 0.95], [5.75, 0.88, 6.87, 5.0]];
+function pixel21(ctx, x, y, h, color, glow) {
+  const s = h / 5;
+  ctx.save(); ctx.shadowColor = color; ctx.shadowBlur = glow; ctx.fillStyle = color;
+  for (const [a, b, c, d] of [...PIX2, ...PIX1]) ctx.fillRect(x + a * s, y + b * s, (c - a) * s, (d - b) * s);
+  ctx.restore();
+}
+export function birthdayScreen({ live = true } = {}) {
+  const W = 1024, H = 512;
+  const [c, ctx] = canvas(W, H);
+  const r = rng(77);
+  const cols = ['#2fd0b3', '#ffd34d', '#ff5fa2', '#7fb6ff', '#ffffff', '#b28bff'];
+  const bits = Array.from({ length: 70 }, () => ({ x: r() * W, y: r() * H, s: 3 + r() * 5, v: 18 + r() * 40, w: r() * 6, c: cols[Math.floor(r() * cols.length)] }));
+  const grid = (() => { const [g, gx] = canvas(8, 8); gx.fillStyle = 'rgba(0,0,0,0.0)'; gx.fillRect(0, 0, 8, 8); gx.fillStyle = 'rgba(0,0,0,0.28)'; gx.fillRect(0, 6, 8, 2); gx.fillRect(6, 0, 2, 8); return ctx.createPattern(g, 'repeat'); })();
+  const font = (w, s) => `${w} ${s}px "Unbounded", "Onest", sans-serif`;
+  const text = (t, x, y, s, color, w = 700, align = 'left') => { ctx.font = font(w, s); ctx.textAlign = align; ctx.fillStyle = color; ctx.fillText(t, x, y); };
+  const chip = (t, x, y) => {
+    ctx.font = '600 26px "Onest", sans-serif';
+    const tw = ctx.measureText(t).width;
+    ctx.fillStyle = 'rgba(47,208,179,0.16)'; rr(ctx, x, y - 30, tw + 36, 44, 22); ctx.fill();
+    ctx.strokeStyle = 'rgba(47,208,179,0.7)'; ctx.lineWidth = 2; rr(ctx, x, y - 30, tw + 36, 44, 22); ctx.stroke();
+    ctx.fillStyle = '#e9fffa'; ctx.textAlign = 'left'; ctx.fillText(t, x + 18, y);
+    return tw + 52;
+  };
+  const SL = 5.5;                                       // секунд на слайд, из них 0.8 — смена
+  function slide(i, a, t) {
+    ctx.save(); ctx.globalAlpha = a;
+    const lift = (1 - a) * 18;
+    if (i === 0) {
+      pixel21(ctx, 70, 120 + lift, 260 + 8 * Math.sin(t * 3), '#2fd0b3', 30 + 12 * Math.sin(t * 3));
+      text('С ДНЁМ', 420, 190 + lift, 64, '#ffffff');
+      text('РОЖДЕНИЯ,', 420, 262 + lift, 64, '#ffffff');
+      text('SCHOOL 21!', 420, 360 + lift, 84, '#2fd0b3');
+    } else if (i === 1) {
+      ctx.save(); ctx.shadowColor = '#ffd34d'; ctx.shadowBlur = 40; text('2', 120, 400 + lift, 360, '#ffd34d', 700, 'center'); ctx.restore();
+      text('ГОДА', 250, 210 + lift, 92, '#ffffff');
+      text('кампусу в Ташкенте', 254, 270 + lift, 40, '#cfd3ff', 500);
+      let x = 254;
+      for (const t2 of ['10 кластеров', 'открыто 24/7', 'peer-to-peer']) x += chip(t2, x, 360 + lift) + 12;
+    } else {
+      text('СПАСИБО', W / 2, 200 + lift, 96, '#ffffff', 700, 'center');
+      text('пирам, менторам и всей команде', W / 2, 266 + lift, 42, '#cfd3ff', 500, 'center');
+      pixel21(ctx, W / 2 - 70, 310 + lift, 120, '#2fd0b3', 26);
+    }
+    ctx.restore();
+  }
+  function draw(t) {
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, '#0b0d2e'); g.addColorStop(0.6, '#1c1868'); g.addColorStop(1, '#3a1f8a');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // мягкие пятна света
+    for (const [cx, cy, rad, col, sp] of [[0.2, 0.3, 300, 'rgba(47,208,179,0.35)', 0.21], [0.8, 0.7, 340, 'rgba(178,139,255,0.35)', 0.17], [0.55, 0.2, 260, 'rgba(255,95,162,0.25)', 0.13]]) {
+      const x = W * (cx + 0.12 * Math.sin(t * sp * 6.28)), y = H * (cy + 0.1 * Math.cos(t * sp * 5.1));
+      const rg = ctx.createRadialGradient(x, y, 0, x, y, rad);
+      rg.addColorStop(0, col); rg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+    }
+    for (const b of bits) {
+      const y = (b.y + t * b.v) % (H + 20) - 10, x = b.x + 14 * Math.sin(t * 1.3 + b.w);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(t * 2 + b.w); ctx.fillStyle = b.c; ctx.globalAlpha = 0.75; ctx.fillRect(-b.s, -b.s / 2, b.s * 2, b.s); ctx.restore();
+    }
+    const k = (t / SL) % 3, i = Math.floor(k), f = k - i, fade = 0.8 / SL;
+    if (f > 1 - fade) { const a = (f - (1 - fade)) / fade; slide(i, 1 - a, t); slide((i + 1) % 3, a, t); } else slide(i, 1, t);
+    ctx.fillStyle = grid; ctx.fillRect(0, 0, W, H);
+  }
+  draw(1.2);
+  const texture = tex(c);
+  let last = -1;
+  return {
+    texture,
+    update(t) { if (!live || t - last < 0.05) return; last = t; draw(t); texture.needsUpdate = true; },
+  };
+}
+
+// Пиксельный знак «21» бирюзой на прозрачном фоне (трибуна, значки)
+let LOGO21 = null;
+export function logo21Texture() {
+  if (LOGO21) return LOGO21;
+  const [c, ctx] = canvas(256, 256);
+  pixel21(ctx, 28, 58, 140, '#2fd0b3', 0);
+  LOGO21 = tex(c);
+  return LOGO21;
+}

@@ -21,6 +21,7 @@ import { P, sx, sy, sz } from './lib/geom.js';
 import { renderPlan } from './ui/plan.js';
 import { renderSite } from './ui/sitemap.js';
 import { buildParty } from './build/party.js';
+import { createPeople } from './build/people.js';
 import { createWalk } from './lib/walk.js';
 
 const $ = (id) => document.getElementById(id);
@@ -39,6 +40,7 @@ const saveZones = () => { try { localStorage.setItem(STORE, JSON.stringify(ZONES
 
 const state = { view: '3d', cut: null, time: 'day', conf: false, edit: false, walk: false, selected: null, preset: 'front', party: false };
 let party = null;             // праздничное убранство (строится при первом включении режима)
+let people = null;            // люди кампуса (модели грузятся в фоне после старта; ?people=0 — без людей)
 
 // ── Рендерер и сцена ────────────────────────────────────────────────────────
 // Уровень качества: high — десктоп (MSAA ×4, GTAO, тени 4096 мягкие, полная детализация),
@@ -280,7 +282,19 @@ async function build() {
   fitCamera('front', true);
   $('loader').classList.add('gone');
   setTimeout(() => $('loader').remove(), 600);
+  loadPeople();
 }
+async function loadPeople() {
+  if (new URLSearchParams(location.search).get('people') === '0') return;
+  people = createPeople({ hq: HQ, levels: world.interior.levels });
+  people.setCamera(camera);
+  people.setSeats(world.interior.seats);
+  try { await people.load(); } catch (e) { console.warn('Люди не загрузились:', e); people = null; return; }
+  people.setMode(state.party ? 'party' : 'normal');
+  syncPeopleDetail();
+}
+// люди на этажах подчиняются той же «детализации», что и мебель (издалека снаружи не видны)
+function syncPeopleDetail() { people?.setDetail(detailOn); }
 // rAF не срабатывает во вкладке в фоне — страхуемся таймером
 const tick = () => new Promise((r) => { let d = false; const go = () => { if (!d) { d = true; r(); } }; requestAnimationFrame(go); setTimeout(go, 60); });
 
@@ -296,6 +310,7 @@ function buildInteriors() {
   for (const g of Object.values(world.interior.levels)) scene.add(g);
   // инстансы мебели: помечаем, чтобы прятать в дальнем виде снаружи
   for (const g of Object.values(world.interior.levels)) g.traverse((o) => { if (o.isInstancedMesh) o.userData.detail = true; });
+  if (people) { people.setSeats(world.interior.seats); people.attach(world.interior.levels); people.setMode(people.mode); syncPeopleDetail(); }
   walk?.invalidate();   // коллизии прогулки пересоберутся (сразу, если она идёт, иначе при старте)
 }
 
@@ -440,6 +455,7 @@ function updateDetailVisibility() {
   if (want === detailOn) return;
   detailOn = want;
   for (const g of Object.values(world.interior.levels)) g.traverse((o) => { if (o.userData.detail) o.visible = want; });
+  syncPeopleDetail();
   renderer.shadowMap.needsUpdate = true;
 }
 
@@ -835,6 +851,7 @@ function setParty(on) {
     party.setGlow(state.time);
   }
   if (party) { party.group.visible = on; party.setCut(state.cut); }
+  if (people?.loaded && people.mode !== (on ? 'party' : 'normal')) { people.setMode(on ? 'party' : 'normal'); syncPeopleDetail(); }
   if (on) {
     if (state.view !== '3d') setView('3d');
     if (state.time === 'day') applyTime('eve');
@@ -894,6 +911,7 @@ function renderFrame(dt, auto = true, fwRate = 1) {
     if (state.walk) walk.update(dt); else controls.update();
   }
   if (state.party && party) party.update(dt, fwRate);
+  people?.update(dt);
   sky.position.copy(camera.position);
   if (!auto || performance.now() - lastDetailCheck > 300) { lastDetailCheck = performance.now(); updateDetailVisibility(); }
   if (state.view === '3d') {
@@ -938,4 +956,4 @@ build().then(() => {
 
 // для отладки из консоли
 window.__s21 = { scene, camera, controls, state, world, applyCut, applyTime, fitCamera, renderer, mats, walk: walk.api, quality: QUALITY, composer,
-  setParty, partyApi: () => party, capture: (dt, fwRate) => renderFrame(dt, false, fwRate), labelRenderer };
+  setParty, partyApi: () => party, peopleApi: () => people, capture: (dt, fwRate) => renderFrame(dt, false, fwRate), labelRenderer };

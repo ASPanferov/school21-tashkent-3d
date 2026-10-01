@@ -18,11 +18,14 @@ const toFacade = (x) => (x < 0.7 ? FACADE_GAP : x > SIZE - 0.7 ? SIZE - FACADE_G
 const ATR = [ATRIUM.u0, ATRIUM.v0, ATRIUM.u1, ATRIUM.v1];
 const PORCH = B.ENTRANCE.porch ? [B.ENTRANCE.porch.u0, 0.3, SIZE - 0.3, B.ENTRANCE.porch.v1] : null;
 
+// места для людей (src/build/people.js): кресла у столов, стулья ивент-холла, подушки амфитеатра
+let SEATS = { desk: [], hall: [], amphi: [] };
 export function buildInterior(mats, zones) {
+  SEATS = { desk: [], hall: [], amphi: [] };
   const levels = {};
   const pick = [];
   for (const L of LEVELS) levels[L.id] = buildLevel(mats, L, zones.filter((z) => z.level === L.id), pick);
-  return { levels, pick };
+  return { levels, pick, seats: SEATS };
 }
 
 function buildLevel(mats, L, zones, pick) {
@@ -633,6 +636,17 @@ function amphitheater(ctx) {
       prism(b, 'cushion', clipAll(sector(C, r[k] + 0.06, r[k] + 0.52, A.rowAngles[0] + 1.5, A.rowAngles[1] - 1.5), [...planes, ...pc]), zt, zt + 0.11);
     }
   }
+  // места на подушках: по дуге каждого ряда через ~0.62 м, кроме проходов-лестниц
+  for (let k = 0; k < r.length - 1; k++) {
+    const rr = r[k] + 0.3, zt = A.stageZ + A.rowRise * (k + 1), feet = k === 0 ? A.stageZ : zt - A.rowRise;
+    const step = (0.62 / rr) * (180 / Math.PI);
+    for (let a = A.rowAngles[0] + 4; a <= A.rowAngles[1] - 4; a += step) {
+      const u = C[0] + Math.cos((a * Math.PI) / 180) * rr, v = C[1] + Math.sin((a * Math.PI) / 180) * rr;
+      if (planes.some(([pa, pb, pc]) => pa * u + pb * v + pc < 0.3)) continue;
+      if ((u > au.from - 0.35 && u < au.to + 0.35) || (v > av.from - 0.35 && v < av.to + 0.35)) continue;
+      SEATS.amphi.push({ u, v, z: feet, h: zt + 0.11 - feet, face: [C[0] - u, C[1] - v], level: 'B1' });
+    }
+  }
   // торцы рядов: ступенчатые щёки из туфа на 0.9 выше ряда — с торца ряда не шагнёшь вниз на сцену
   for (const [ang, side] of [[A.rowAngles[0], -1], [A.rowAngles[1], 1]]) {
     const d = [Math.cos((ang * Math.PI) / 180), Math.sin((ang * Math.PI) / 180)];
@@ -856,7 +870,9 @@ function clusterRows(ctx, zn) {
         I('monitor', F.monitorGeo, 'monitor').push(mtx(mu, mv, z, rot));
         I('screen', F.screenGeo, 'screenOff').push(mtx(mu, mv, z, rot));
         const chu = alongV ? cu + side * 0.85 : cu + t, chv = alongV ? cv + t : cv + side * 0.85;
-        I('chair', F.chairGeo, 'chairBlack').push(mtx(chu, chv, z, rot + Math.PI + (R() - 0.5) * 0.5));
+        const rc = rot + Math.PI + (R() - 0.5) * 0.5;
+        I('chair', F.chairGeo, 'chairBlack').push(mtx(chu, chv, z, rc));
+        SEATS.desk.push({ u: chu, v: chv, z, h: 0.49, face: [-Math.sin(rot + Math.PI), Math.cos(rot + Math.PI)], level: zn.level, zone: zn.id });
       }
     }
     r++;
@@ -1170,6 +1186,7 @@ function conference(ctx, zn) {
   for (let u = u0 + 5.0; u < u1 - 2.1; u += 0.95) for (let v = v0 + 1.6; v < v1 - 2.0; v += 0.55) {
     if (Math.abs(v - 8.3) < 0.55) continue;
     I('pchair', F.plasticChairGeo, 'chairWhite').push(mtx(u, v, z, Math.PI / 2));
+    SEATS.hall.push({ u, v, z, h: 0.47, face: [-1, 0], level: zn.level });
   }
   starLights(lights, [u0 + 1.5, v0 + 1.5, u1 - 1.5, v1 - 1.5], top - 0.8, 3.4);
 }

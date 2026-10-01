@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>People lab</title>
+<style>html,body{margin:0;height:100%;background:#d8dde3}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+// Стенд поз: один персонаж в пустой сцене, камера сбоку/спереди. Управление — из консоли через window.lab
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(innerWidth, innerHeight); document.body.appendChild(r.domElement);
+r.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xd8dde3);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x888888, 2.2)); const d = new THREE.DirectionalLight(0xffffff, 1.6); d.position.set(3, 5, 4); scene.add(d);
+const grid = new THREE.GridHelper(4, 8, 0x666666, 0xaaaaaa); scene.add(grid);
+const chair = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), new THREE.MeshStandardMaterial({ color: 0xffffff })); chair.position.set(0, 0.225, 0.05); scene.add(chair);
+const cam = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.05, 50);
+const L = new GLTFLoader();
+const [man, anims] = await Promise.all([L.loadAsync('../assets/people/m_casual.glb'), L.loadAsync('../assets/people/anims.glb')]);
+scene.add(man.scene);
+const mixer = new THREE.AnimationMixer(man.scene);
+const clips = Object.fromEntries(anims.animations.map((c) => [c.name, c]));
+window.lab = { THREE, scene, man: man.scene, mixer, clips, cam, r,
+  bone: (n) => man.scene.getObjectByName(n),
+  view(x, y, z, tx = 0, ty = 0.9, tz = 0) { cam.position.set(x, y, z); cam.lookAt(tx, ty, tz); r.render(scene, cam); },
+  play(name, t = 0) { mixer.stopAllAction(); const a = mixer.clipAction(clips[name]); a.play(); mixer.setTime(t); man.scene.updateMatrixWorld(true); },
+  render() { r.render(scene, cam); },
+};
+lab.play('Idle', 0.3); lab.view(2.2, 1.0, 2.2);
+window.__ready = true;
+</script></body></html>

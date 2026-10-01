@@ -1,0 +1,14 @@
+{
+  "name": "school21-tashkent-3d-tools",
+  "private": true,
+  "type": "module",
+  "description": "Скриншоты, проверка проходимости и прогулки, съёмка видео — через headless Chrome",
+  "scripts": {
+    "shot": "node shot.mjs",
+    "walk": "node walk-test.mjs",
+    "nav": "node nav-check.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}
