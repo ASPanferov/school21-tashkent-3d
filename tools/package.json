@@ -2,9 +2,10 @@
   "name": "school21-tashkent-3d-tools",
   "private": true,
   "type": "module",
-  "description": "Скриншоты, проверка проходимости и прогулки, съёмка видео — через headless Chrome",
+  "description": "Скриншоты, замер производительности, тесты прогулки и проходимости — через headless Chrome",
   "scripts": {
     "shot": "node shot.mjs",
+    "perf": "node perf.mjs",
     "walk": "node walk-test.mjs",
     "nav": "node nav-check.mjs"
   },
