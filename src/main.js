@@ -286,7 +286,9 @@ async function build() {
 }
 async function loadPeople() {
   if (new URLSearchParams(location.search).get('people') === '0') return;
-  people = createPeople({ hq: HQ, levels: world.interior.levels });
+  // ?crowd=2 — вдвое больше людей (для съёмки видео; на обычном просмотре дорого)
+  const crowd = Math.min(4, Math.max(0.2, +(new URLSearchParams(location.search).get('crowd') || 1)));
+  people = createPeople({ hq: HQ, levels: world.interior.levels, crowd });
   people.setCamera(camera);
   people.setSeats(world.interior.seats);
   try { await people.load(); } catch (e) { console.warn('Люди не загрузились:', e); people = null; return; }
@@ -884,6 +886,7 @@ $('b-about').onclick = () => {
     <p>Всё генерируется из одного файла <span class="mono">src/data/building.js</span>: поправьте цифры — и здание пересоберётся.</p>
     <h2 style="font-size:15px;margin-top:14px">Источники</h2>
     <ul>${B.SOURCES.map((s) => `<li><a href="${s.url}" target="_blank" rel="noopener">${esc(s.label)}</a></li>`).join('')}</ul>
+    <p class="note">Люди — модели <a href="https://quaternius.com" target="_blank" rel="noopener">Quaternius</a> с <a href="https://poly.pizza" target="_blank" rel="noopener">Poly Pizza</a> (CC0, модель «Suit» — CC-BY 3.0). Код открыт под MIT: <a href="https://github.com/ASPanferov/school21-tashkent-3d" target="_blank" rel="noopener">исходники на GitHub</a>.</p>
     <div class="edit" style="border:0;padding-top:8px"><div class="acts"><button class="btn primary" id="a-close">Закрыть</button></div></div></div>`;
   $('app').appendChild(m);
   $('a-close').onclick = () => m.remove();

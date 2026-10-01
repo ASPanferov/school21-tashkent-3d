@@ -346,7 +346,7 @@ function lookFor(role, type, R) {
   return look;
 }
 
-export function createPeople({ hq = true, levels }) {
+export function createPeople({ hq = true, levels, crowd = 1 }) {
   const R = rng(2121);
   let assets = null, people = [], mode = 'normal', seats = { desk: [], hall: [], amphi: [] }, camera = null, frame = 0, detail = true;
   const FAR = hq ? 42 : 28;                   // дальше — не рисуем вовсе (и не обходим при пересчёте матриц)
@@ -369,22 +369,24 @@ export function createPeople({ hq = true, levels }) {
   function populateNormal() {
     const n = hq ? 1 : 0.45;
     // студенты за столами кластеров: часть мест, кластеры вперемешку
-    const desk = seats.desk.filter(() => R() < 0.2 * n);
-    for (const s of desk.slice(0, hq ? 30 : 14)) {
+    const desk = seats.desk.filter(() => R() < 0.2 * n * crowd);
+    for (const s of desk.slice(0, Math.round((hq ? 30 : 14) * crowd))) {
       const p = spawn(s.level, R() < 0.35 ? 'peer21' : 'peer');
       p.place(s.u, s.v, s.z, s.face); p.setPose('sitType', { seat: s.h });
     }
     // лекторий: несколько человек в рядах смотрят на экран
-    for (const s of seats.amphi.filter(() => R() < 0.18 * n).slice(0, hq ? 9 : 4)) {
+    for (const s of seats.amphi.filter(() => R() < 0.18 * n * crowd).slice(0, Math.round((hq ? 9 : 4) * crowd))) {
       const p = spawn('B1'); p.place(s.u, s.v, s.z, s.face); p.setPose('sit', { seat: s.h });
     }
     // группы в лобби, у турникетов, на площадке и в лаунже 3 этажа: стоят и общаются
+    // [уровень, u, v, высота пола (если не уровень)] — лобби, площадка у статуи, подиум лаунжа, галереи, кухни
+    const podium = 9.0 + B.LOUNGE3.podium;
     const groupsAt = [
-      ['L1', 35.2, 24.8], ['L1', 41.5, 26.4], ['L1', 44.6, 28.6], ['L1', 33.6, 33.2], ['M', 21.5, 27.2], ['M', 16.8, 22.0],
-      ['L3', 32.6, 26.0], ['L2', 33.0, 38.5], ['L2', 11.2, 27.5], ['L3', 11.4, 39.0],
+      ['L1', 35.2, 24.8], ['L1', 41.5, 26.4], ['M', 15.9, 29.2], ['L3', 21.6, 23.2, podium], ['L1', 44.6, 28.6], ['M', 21.5, 27.2],
+      ['L3', 18.2, 27.6, podium], ['L1', 33.6, 33.2], ['M', 16.8, 22.0], ['L3', 32.6, 26.0], ['L2', 33.0, 38.5], ['L2', 11.2, 27.5], ['L3', 11.4, 39.0],
     ];
-    for (const [lv, u, v] of groupsAt.slice(0, hq ? 10 : 4)) {
-      const k = 2 + Math.floor(R() * 2), z = lv === 'M' ? B.PLATFORM.z : B.LEVELS.find((l) => l.id === lv).z;
+    for (const [lv, u, v, zf] of groupsAt.slice(0, hq ? 13 : 5)) {
+      const k = 2 + Math.floor(R() * 2), z = zf ?? (lv === 'M' ? B.PLATFORM.z : B.LEVELS.find((l) => l.id === lv).z);
       for (let i = 0; i < k; i++) {
         const a = (i / k) * Math.PI * 2 + R(), r = 0.55 + R() * 0.15;
         const pu = u + Math.cos(a) * r, pv = v + Math.sin(a) * r;
