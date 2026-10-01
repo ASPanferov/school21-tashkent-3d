@@ -4,7 +4,7 @@
 //   node tools/shot.mjs out/prefix "name:-"            — кадр как есть, камеру не трогаем
 //
 // Переменные окружения: URL (по умолчанию http://localhost:5321), Q=high|low, W, H, TIME=day|eve|dusk|night,
-// PARTY=1 (режим «Праздник»), PEOPLE=0 (без людей), CROWD=0.2…4 (плотность людей), UI=1 (оставить интерфейс),
+// PARTY=1 (режим «Праздник»), PEOPLE=0 (без людей), CROWD=0.2…6 (плотность людей), UI=1 (оставить интерфейс),
 // CLICK=id1,id2 (нажать кнопки интерфейса по id перед съёмкой), EVAL='…' (выполнить JS в странице, можно await),
 // JPG=1, CHROME — путь к Chrome. cut — разрез по уровню (B1, L1, M, L2, L3) или «-».
 import puppeteer from 'puppeteer-core';

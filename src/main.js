@@ -287,7 +287,7 @@ async function build() {
 async function loadPeople() {
   if (new URLSearchParams(location.search).get('people') === '0') return;
   // ?crowd=2 — вдвое больше людей (для съёмки видео; на обычном просмотре дорого)
-  const crowd = Math.min(4, Math.max(0.2, +(new URLSearchParams(location.search).get('crowd') || 1)));
+  const crowd = Math.min(6, Math.max(0.2, +(new URLSearchParams(location.search).get('crowd') || 1)));
   people = createPeople({ hq: HQ, levels: world.interior.levels, crowd });
   people.setCamera(camera);
   people.setSeats(world.interior.seats);

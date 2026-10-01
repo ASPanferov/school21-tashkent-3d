@@ -368,9 +368,11 @@ export function createPeople({ hq = true, levels, crowd = 1 }) {
 
   function populateNormal() {
     const n = hq ? 1 : 0.45;
-    // студенты за столами кластеров: часть мест, кластеры вперемешку
+    // студенты за столами кластеров: случайные места во всех десяти кластерах
+    // (места идут по порядку постройки — без перемешивания срез заполнял только Tashkent и Samarkand)
     const desk = seats.desk.filter(() => R() < 0.2 * n * crowd);
-    for (const s of desk.slice(0, Math.round((hq ? 30 : 14) * crowd))) {
+    for (let i = desk.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [desk[i], desk[j]] = [desk[j], desk[i]]; }
+    for (const s of desk.slice(0, Math.round((hq ? 70 : 20) * crowd))) {
       const p = spawn(s.level, R() < 0.35 ? 'peer21' : 'peer');
       p.place(s.u, s.v, s.z, s.face); p.setPose('sitType', { seat: s.h });
     }

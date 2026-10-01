@@ -19,7 +19,7 @@
   - 1 этаж: холл с турникетами, лобби и ивент-холл на 300 мест;
   - парящая площадка +2,25 со статуей и стендами учёных Востока;
   - 2 и 3 этажи: десять кластеров, кухни, переговорные и лаунж под пирамидой.
-- **Люди.** 75 человек на компьютере, около 30 на телефоне. Студенты в форме School 21 и в обычной одежде печатают за моноблоками, слушают в лектории, общаются в лобби и на площадке, ходят по галереям. В «Празднике» все собираются в ивент-холле.
+- **Люди.** 117 человек на компьютере, около 40 на телефоне. Студенты в форме School 21 и в обычной одежде печатают за моноблоками, слушают в лектории, общаются в лобби и на площадке, ходят по галереям. В «Празднике» все собираются в ивент-холле.
 - **Прогулка от первого лица** с физикой: лестницы, ограждения, мини-карта с переносом по клику, полёт сквозь стены. На телефоне — джойстик.
 - **Разрезы и планы.** Любой уровень открывается разрезом. Есть SVG-планы этажей и ситуационный план участка.
 - **Достоверность.** Каждая зона знает, откуда о ней известно: с поэтажного плана, с панорамы, из видео или достроена по логике здания.
@@ -34,7 +34,7 @@
 <td width="50%"><img src="docs/screenshots/s21_cutaway.jpg" alt="Разрез второго этажа"><br><sub><b>Разрез 2 этажа.</b> Кластеры, галерея вокруг второго света, кухня и переговорные</sub></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/s21_cluster.jpg" alt="Кластер Tashkent"><br><sub><b>Кластер Tashkent.</b> Ряды моноблоков, колонны в цвете кластера, студенты за работой</sub></td>
+<td><img src="docs/screenshots/s21_cluster.jpg" alt="Кластер Tashkent"><br><sub><b>Кластер Tashkent.</b> Ряды моноблоков, колонны в цвете кластера, студенты за работой (здесь <code>?crowd=2</code>)</sub></td>
 <td><img src="docs/screenshots/s21_amphitheater.jpg" alt="Лекторий-амфитеатр"><br><sub><b>Лекторий на уровне −1.</b> Здесь проходят защиты проектов и хакатоны</sub></td>
 </tr>
 <tr>
@@ -75,7 +75,7 @@ python3 -m http.server 5321
 | `?party` или `#party` | Сразу включить «Праздник» |
 | `?q=low` / `?q=high` | Качество графики. По умолчанию телефоны получают `low` |
 | `?people=0` | Без людей: быстрее загрузка |
-| `?crowd=2` | Вдвое больше людей (от 0,2 до 4) |
+| `?crowd=2` | Вдвое больше людей (от 0,2 до 6) |
 
 ## Управление
 
@@ -172,7 +172,7 @@ An unofficial, 1:1 interactive 3D model of the School 21 campus in Tashkent (13 
 
 - **What's inside:**
   - the exterior and five levels with interiors (atrium and lecture amphitheatre, event hall, floating platform, ten clusters, the lounge under the glass pyramid);
-  - 75 animated people (about 30 on phones), students in School 21 uniform and in casual clothes;
+  - 117 animated people (about 40 on phones), students in School 21 uniform and in casual clothes;
   - a first-person walk with physics, cut-away views, SVG floor plans, a zone editor and day, evening and night lighting;
   - a festive "Party" mode for the campus birthday ([`?party`](https://school21-tashkent.vercel.app/?party)).
 - **Run it:** there is no build step. Serve the folder with any static server (`python3 -m http.server 5321`) and open `http://localhost:5321`.
