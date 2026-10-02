@@ -11,7 +11,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { P, rng } from '../lib/geom.js';
 import * as B from '../data/building.js';
 
-const BASE = 'assets/people/';
+const BASE = new URL('../../assets/people/', import.meta.url).href;   // от модуля: работает и со стенда tools/
 export const TYPES = ['m_hoodie', 'm_casual', 'm_beach', 'm_business', 'm_punk', 'w_casual', 'w_dress', 'w_suit', 'w_punk'];
 const LOW_TYPES = ['m_hoodie', 'm_casual', 'w_casual', 'w_suit'];
 
@@ -46,15 +46,21 @@ const ROLES = [
 function hexToLin(hex) { return new THREE.Color(hex); }
 
 // ── Загрузка и подготовка шаблонов ───────────────────────────────────────────
-async function loadTemplates(types) {
+export async function loadTemplates(types) {
   const L = new GLTFLoader();
-  const [anims, ...models] = await Promise.all([L.loadAsync(BASE + 'anims.glb'), ...types.map((t) => L.loadAsync(BASE + t + '.glb'))]);
-  const clips = Object.fromEntries(anims.animations.map((c) => [c.name, c]));
+  const [animsM, animsW, ...models] = await Promise.all([L.loadAsync(BASE + 'anims.glb'), L.loadAsync(BASE + 'anims_w.glb'), ...types.map((t) => L.loadAsync(BASE + t + '.glb'))]);
+  const byName = (g) => Object.fromEntries(g.animations.map((c) => [c.name, c]));
+  // клипы пака хранят абсолютные повороты костей своего скелета: у женских моделей другие позы покоя плеч
+  // и рук (до 120°), и мужская ходьба выворачивала им руки назад — поэтому у каждого скелета свои анимации
+  const clipsM = byName(animsM), clipsW = byName(animsW);
   const templates = {};
   types.forEach((type, i) => { templates[type] = prepare(type, models[i].scene); });
   // позы, которых нет в паке (сидя, печать, хлопки, ликование), запекаются в клипы под пропорции каждой модели
-  for (const tpl of Object.values(templates)) tpl.clips = { ...clips, ...bakeClips(tpl, clips) };
-  return { templates, clips };
+  for (const tpl of Object.values(templates)) {
+    const base = tpl.type.startsWith('w_') ? clipsW : clipsM;
+    tpl.clips = { ...base, ...bakeClips(tpl, base) };
+  }
+  return { templates, clips: clipsM };
 }
 
 // Все куски модели → один SkinnedMesh с цветами вершин; запоминаем диапазоны слотов и позу покоя костей
@@ -117,7 +123,7 @@ const BADGE_MAT = () => (badgeMat ??= new THREE.MeshStandardMaterial({ map: badg
 
 // высота сиденья → ключ клипа (с шагом 2 см: кресла 0.49, стулья 0.47, ступени амфитеатра ~0.49)
 const seatKey = (h) => (Math.round(h * 50) / 50).toFixed(2);
-const BAKE_BONES = ['Body', 'UpperLegL', 'LowerLegL', 'UpperLegR', 'LowerLegR', 'FootL', 'FootR', 'UpperArmL', 'LowerArmL', 'UpperArmR', 'LowerArmR'];
+const BAKE_BONES = ['Body', 'UpperLegL', 'LowerLegL', 'UpperLegR', 'LowerLegR', 'FootL', 'FootR', 'UpperArmL', 'LowerArmL', 'UpperArmR', 'LowerArmR', 'WristL', 'WristR'];
 const SEATS_H = [0.47, 0.49, 0.5];
 // Запекание: клон шаблона проигрывает Idle, на каждом из 25 кадров поверх правим кости и пишем их локальные
 // повороты/положения в дорожки; остальные дорожки (дыхание, голова) берутся из Idle как есть.
@@ -139,7 +145,7 @@ function bakeClips(tpl, clips) {
       times.push(t);
       for (const b of BAKE_BONES) { const bone = p.bones[b]; if (!bone) continue; q[b].push(...bone.quaternion.toArray()); pos[b].push(...bone.position.toArray()); }
     }
-    const touched = new Set(kind === 'Clap' || kind === 'Cheer' ? ['UpperArmL', 'LowerArmL', 'UpperArmR', 'LowerArmR'] : BAKE_BONES);
+    const touched = new Set(kind === 'Clap' || kind === 'Cheer' ? ['UpperArmL', 'LowerArmL', 'UpperArmR', 'LowerArmR', 'WristL', 'WristR'] : BAKE_BONES);
     const keep = idle.tracks.filter((tr) => !touched.has(tr.name.split('.')[0]));
     const tracks = [...keep.map((tr) => tr.clone())];
     for (const b of touched) {
@@ -155,10 +161,11 @@ function bakeClips(tpl, clips) {
 
 // ── Персонаж ─────────────────────────────────────────────────────────────────
 const V = new THREE.Vector3(), V2 = new THREE.Vector3(), V3 = new THREE.Vector3(), V4 = new THREE.Vector3();
+const K = Array.from({ length: 8 }, () => new THREE.Vector3()), KQ = new THREE.Quaternion(), KQ2 = new THREE.Quaternion();
 const Q = new THREE.Quaternion(), Q2 = new THREE.Quaternion(), M = new THREE.Matrix4(), MI = new THREE.Matrix4();
 const UPY = new THREE.Vector3(0, 1, 0);
 
-class Person {
+export class Person {
   constructor(tpl, clips, look, R) {
     this.tpl = tpl;
     this.root = cloneSkinned(tpl.scene);
@@ -295,16 +302,46 @@ class Person {
         this.aim('UpperArm' + s, V2.set(0.2 * sg, -0.66, 0.6));
         this.aim('LowerArm' + s, V2.set(-0.18 * sg, -0.12 + 0.05 * Math.sin((t / D) * 2 * Math.PI * 3 + (s === 'L' ? 0 : 1.7)), 1));
       } else if (kind === 'clap') {
-        // ладони сходятся по центру груди и расходятся на ~25 см, ~2.4 хлопка в секунду
+        // хлопки: запястья сходятся перед грудью и расходятся на ~20 см (~2.4 хлопка в секунду), локти —
+        // по двузвенной ИК вниз и чуть наружу, предплечья докручены так, чтобы ладони смотрели друг на друга
         const open = 0.5 + 0.5 * Math.sin((t / D) * 2 * Math.PI * 4);
-        this.aim('UpperArm' + s, V2.set(0.3 * sg, -0.45, 0.78));
-        this.aim('LowerArm' + s, V2.set((-0.6 + 0.5 * open) * sg, 0.38, 0.75));
+        this.reach(s, V2.set(sg * (0.032 + 0.1 * open), 0.0, 0.21), V.set(sg * 0.35, -1, -0.35));
+        this.palm('LowerArm' + s, V.set(-sg, 0.4, 0));
+        this.aim('Wrist' + s, V2.set(sg * 0.12 * open, 0.55, 1));
+        this.palm('Wrist' + s, V.set(-sg, 0, 0));
       } else if (kind === 'cheer') {
         const b = Math.sin((t / D) * 2 * Math.PI * 3 + (s === 'L' ? 0 : 0.6));
         this.aim('UpperArm' + s, V2.set(0.42 * sg, 0.88, 0.12 + 0.05 * b));
         this.aim('LowerArm' + s, V2.set(0.12 * sg, 1, 0.1 + 0.12 * b));
       }
     }
+  }
+  // положение кости в пространстве модели
+  posM(bone, out) { bone.updateWorldMatrix(true, false); return out.setFromMatrixPosition(M.multiplyMatrices(MI, bone.matrixWorld)); }
+  // рука тянется запястьем в точку «грудь + off»: двузвенная ИК, pole — куда смотрит локоть
+  reach(s, off, pole) {
+    const r = this.tpl.rest, up = 'UpperArm' + s, lo = 'LowerArm' + s;
+    const S = this.posM(this.bones[up], K[0]), H = this.posM(this.bones.Chest, K[1]).add(off);
+    const l1 = r[lo].pos.distanceTo(r[up].pos), l2 = r['Wrist' + s].pos.distanceTo(r[lo].pos);
+    const dir = K[2].subVectors(H, S); const d = Math.min(dir.length(), (l1 + l2) * 0.999); dir.normalize();
+    const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+    const side = K[3].copy(pole).addScaledVector(dir, -pole.dot(dir)).normalize();
+    const E = K[4].copy(S).addScaledVector(dir, a).addScaledVector(side, h);
+    this.aim(up, K[5].subVectors(E, S));
+    this.aim(lo, K[5].subVectors(H, this.posM(this.bones[lo], K[6])));
+  }
+  // докрутить кость руки (предплечье, кисть) вокруг её оси, чтобы ладонь смотрела в сторону want
+  // (в T-позе покоя ладонь смотрит вниз, −Y)
+  palm(name, want) {
+    const bone = this.bones[name];
+    if (!bone) return;
+    const q = this.modelQ(bone, KQ).clone();
+    const axis = K[0].set(0, 1, 0).applyQuaternion(q);
+    const n0 = K[1].set(0, -1, 0).applyQuaternion(KQ2.copy(this.tpl.rest[name].q).invert()).applyQuaternion(q);
+    const n1 = K[2].copy(want);
+    n0.addScaledVector(axis, -n0.dot(axis)).normalize(); n1.addScaledVector(axis, -n1.dot(axis)).normalize();
+    const ang = Math.atan2(K[3].crossVectors(n0, n1).dot(axis), n0.dot(n1));
+    this.setModelQ(bone, KQ2.setFromAxisAngle(axis, ang).multiply(q));
   }
   // прогулка туда-обратно по ломаной (u, v): скорость шага 1.3 м/с, разворот плавный
   walkTo(points, z, speed = 1.3) {

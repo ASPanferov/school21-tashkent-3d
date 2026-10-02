@@ -4,27 +4,38 @@
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 </head><body>
 <script type="module">
-// Стенд поз: один персонаж в пустой сцене, камера сбоку/спереди. Управление — из консоли через window.lab
+// Стенд поз: все модели людей × позы из src/build/people.js в пустой сцене.
+// Открыть через сервер модели: http://localhost:5321/tools/people-lab.html. Управление — из консоли через window.lab:
+// lab.setTime(t) — кадр анимации, lab.view(x, y, z, tx, ty, tz) — камера (координаты сцены), lab.only('walk') — одна поза.
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(innerWidth, innerHeight); document.body.appendChild(r.domElement);
+import { loadTemplates, Person, TYPES } from '../src/build/people.js';
+import { P } from '../src/lib/geom.js';
+
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(innerWidth, innerHeight); r.setPixelRatio(1); document.body.appendChild(r.domElement);
 r.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0xd8dde3);
-scene.add(new THREE.HemisphereLight(0xffffff, 0x888888, 2.2)); const d = new THREE.DirectionalLight(0xffffff, 1.6); d.position.set(3, 5, 4); scene.add(d);
-const grid = new THREE.GridHelper(4, 8, 0x666666, 0xaaaaaa); scene.add(grid);
-const chair = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), new THREE.MeshStandardMaterial({ color: 0xffffff })); chair.position.set(0, 0.225, 0.05); scene.add(chair);
-const cam = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.05, 50);
-const L = new GLTFLoader();
-const [man, anims] = await Promise.all([L.loadAsync('../assets/people/m_casual.glb'), L.loadAsync('../assets/people/anims.glb')]);
-scene.add(man.scene);
-const mixer = new THREE.AnimationMixer(man.scene);
-const clips = Object.fromEntries(anims.animations.map((c) => [c.name, c]));
-window.lab = { THREE, scene, man: man.scene, mixer, clips, cam, r,
-  bone: (n) => man.scene.getObjectByName(n),
-  view(x, y, z, tx = 0, ty = 0.9, tz = 0) { cam.position.set(x, y, z); cam.lookAt(tx, ty, tz); r.render(scene, cam); },
-  play(name, t = 0) { mixer.stopAllAction(); const a = mixer.clipAction(clips[name]); a.play(); mixer.setTime(t); man.scene.updateMatrixWorld(true); },
-  render() { r.render(scene, cam); },
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a8a, 2.4));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(4, 8, 6); scene.add(sun);
+const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.05, 80);
+const POSES = new URLSearchParams(location.search).get('poses')?.split(',') || ['walk', 'clap', 'sitClap', 'cheer', 'wave', 'stand'];
+const { templates, clips } = await loadTemplates(TYPES);
+const people = [];
+POSES.forEach((pose, j) => TYPES.forEach((type, i) => {
+  const p = new Person(templates[type], clips, {}, () => 0);
+  const u = 27.6 + (i - 4) * 0.95, v = 27.6 + j * 1.6;
+  p.place(u, v, 0, [0, -1]);                       // лицом к камере (к −v)
+  p.setPose(pose, { seat: 0.47 });
+  p.root.userData.pose = pose; p.root.userData.type = type;
+  scene.add(p.root); people.push(p);
+}));
+// подписи-плашки сидений не нужны: позы сидя видно и так; пол — сетка
+const floor = new THREE.GridHelper(16, 32, 0x777777, 0xaaaaaa); floor.position.copy(P(27.6, 27.6 + 4, 0)); scene.add(floor);
+window.lab = { THREE, scene, cam, r, people, POSES, TYPES, templates, clips,
+  setTime(t) { for (const p of people) { p.mixer.setTime(t); p.dirty = true; } scene.updateMatrixWorld(true); r.render(scene, cam); },
+  view(x, y, z, tx, ty, tz, fov = 30) { cam.fov = fov; cam.updateProjectionMatrix(); cam.position.set(x, y, z); cam.lookAt(tx, ty, tz); r.render(scene, cam); },
+  only(pose) { for (const p of people) p.root.visible = !pose || p.root.userData.pose === pose; r.render(scene, cam); },
+  at(i, j) { return people[j * TYPES.length + i]; },
 };
-lab.play('Idle', 0.3); lab.view(2.2, 1.0, 2.2);
+lab.setTime(0.3); lab.view(0, 3.2, 9.5, 0, 1.4, -3);
 window.__ready = true;
 </script></body></html>

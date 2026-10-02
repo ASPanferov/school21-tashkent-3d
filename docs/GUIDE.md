@@ -208,7 +208,7 @@ export function slide(title = 'SCHOOL 21', sub = 'это бесплатная ш
 | `clap` | Хлопает стоя |
 | `cheer` | Ликует |
 
-Позы сидя, хлопки и ликование запекаются из костей при загрузке (`bakeClips`). Подбирать новые удобно в `tools/people-lab.html`.
+Позы сидя, хлопки и ликование запекаются из костей при загрузке (`bakeClips`): хлопки — двузвенной ИК руки (`reach`) с поворотом кисти ладонью к ладони (`palm`). Подбирать и проверять позы удобно на стенде: `http://localhost:5321/tools/people-lab.html` — все модели в сетке по позам, `?poses=walk,clap` оставит нужные, управление камерой и временем — `window.lab` в консоли.
 
 ```js
 // people.js → populateNormal(): ещё одна группа беседующих — [уровень, u, v, отметка пола (необязательно)]
@@ -226,7 +226,7 @@ const walks = [ /* … */ ['L2', 4.5, [[30.0, 39.5], [14.0, 39.5]]] ];
 **Новая модель человека:**
 
 1. Скачайте модель Quaternius в glTF (CC0, [quaternius.com](https://quaternius.com) или [poly.pizza](https://poly.pizza/u/Quaternius)).
-2. Ужмите её: `python3 tools/glb_strip.py in.glb assets/people/имя.glb`. Без `--keep` анимации удаляются, они общие и лежат в `anims.glb`.
+2. Ужмите её: `python3 tools/glb_strip.py in.glb assets/people/имя.glb`. Без `--keep` анимации удаляются: они общие для скелета и лежат в `anims.glb` (мужской) и `anims_w.glb` (женский). Анимации чужого скелета не подходят: клипы хранят абсолютные повороты костей, и при других позах покоя руки выворачиваются. Для нового скелета соберите свой файл: `python3 tools/glb_strip.py in.glb assets/people/anims_x.glb --keep Idle,Idle_Neutral,Walk,Wave,Interact --no-mesh` — и подключите его в `loadTemplates`.
 3. Добавьте имя в `TYPES` и соответствие «Часть:Материал → слот» в `SLOTS`.
 4. Проверьте позы в лаборатории и в модели.
 

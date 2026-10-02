@@ -1,6 +1,6 @@
 # Модели людей
 
-Все модели сделаны [Quaternius](https://quaternius.com) и взяты с [Poly Pizza](https://poly.pizza). Файлы ужаты скриптом `tools/glb_strip.py`: анимации удалены и собраны в общий `anims.glb`, неиспользуемые данные выкинуты. Геометрия и материалы не менялись, одежда перекрашивается в коде (`src/build/people.js`).
+Все модели сделаны [Quaternius](https://quaternius.com) и взяты с [Poly Pizza](https://poly.pizza). Файлы ужаты скриптом `tools/glb_strip.py`: анимации удалены из моделей и собраны в общие файлы для каждого скелета (`anims.glb` — мужской, `anims_w.glb` — женский), неиспользуемые данные выкинуты. Геометрия и материалы не менялись, одежда перекрашивается в коде (`src/build/people.js`).
 
 | Файл | Модель | Набор | Лицензия на Poly Pizza |
 |---|---|---|---|
@@ -14,5 +14,6 @@
 | `w_punk.glb` | Punk | Ultimate Modular Women Pack | CC0 1.0 |
 | `w_suit.glb` | Suit | Ultimate Modular Women Pack | [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
 | `anims.glb` | Анимации Idle, Idle_Neutral, Interact, Walk, Wave из Hoodie Character | Ultimate Modular Men Pack | CC0 1.0 |
+| `anims_w.glb` | Те же анимации для женского скелета, из Animated Woman | Ultimate Modular Women Pack | CC0 1.0 |
 
 **Атрибуция для CC-BY:** «Suit» by Quaternius, [Poly Pizza](https://poly.pizza), CC-BY 3.0.
