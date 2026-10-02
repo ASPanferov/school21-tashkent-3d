@@ -471,7 +471,7 @@ export function createPeople({ hq = true, levels, crowd = 1 }) {
       mode = m;
       if (!assets) return;
       clear();
-      if (m === 'party') populateParty(); else populateNormal();
+      if (m === 'party') populateParty(); else if (m === 'all') { populateNormal(); populateParty(); } else populateNormal();
       attach(levels);
     },
     get mode() { return mode; },

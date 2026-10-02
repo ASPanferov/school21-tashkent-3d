@@ -292,9 +292,11 @@ async function loadPeople() {
   people.setCamera(camera);
   people.setSeats(world.interior.seats);
   try { await people.load(); } catch (e) { console.warn('Люди не загрузились:', e); people = null; return; }
-  people.setMode(state.party ? 'party' : 'normal');
+  people.setMode(peopleMode());
   syncPeopleDetail();
 }
+// ?people=all — люди и в праздничном зале, и по всему зданию (для съёмки видео)
+const peopleMode = () => (new URLSearchParams(location.search).get('people') === 'all' ? 'all' : state.party ? 'party' : 'normal');
 // люди на этажах подчиняются той же «детализации», что и мебель (издалека снаружи не видны)
 function syncPeopleDetail() { people?.setDetail(detailOn); }
 // rAF не срабатывает во вкладке в фоне — страхуемся таймером
@@ -853,7 +855,7 @@ function setParty(on) {
     party.setGlow(state.time);
   }
   if (party) { party.group.visible = on; party.setCut(state.cut); }
-  if (people?.loaded && people.mode !== (on ? 'party' : 'normal')) { people.setMode(on ? 'party' : 'normal'); syncPeopleDetail(); }
+  if (people?.loaded && people.mode !== peopleMode()) { people.setMode(peopleMode()); syncPeopleDetail(); }
   if (on) {
     if (state.view !== '3d') setView('3d');
     if (state.time === 'day') applyTime('eve');
